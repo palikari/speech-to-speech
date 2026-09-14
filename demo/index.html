@@ -11,7 +11,7 @@
       rel="stylesheet"
     />
     <link rel="icon" type="image/svg+xml" href="favicon.svg?v=4" />
-    <link rel="stylesheet" href="style.css?v=audio-24k-v13" />
+    <link rel="stylesheet" href="style.css?v=audio-24k-v14" />
   </head>
   <!--
     `booting` disables transitions/animations until the first paint commits.
@@ -257,7 +257,22 @@
               </small>
             </label>
 
-            <label class="field">
+            <div class="field" id="character-field">
+              <span>Character</span>
+              <div class="mode-toggle" role="radiogroup" aria-label="Character source">
+                <label class="mode-option">
+                  <input type="radio" name="persona-mode" value="preset" checked />
+                  <span>Preset persona</span>
+                </label>
+                <label class="mode-option">
+                  <input type="radio" name="persona-mode" value="custom" />
+                  <span>Custom voice and prompt</span>
+                </label>
+              </div>
+              <small>Pick one of the built-in characters, or describe your own voice and write its prompt. The other side is greyed out.</small>
+            </div>
+
+            <label class="field" id="persona-field">
               <span>Persona</span>
               <select id="persona">
                 <option value="assistant" selected>Assistant</option>
@@ -266,37 +281,43 @@
                 <option value="captain">Sea captain</option>
                 <option value="witch">Witch</option>
               </select>
-              <small>Sets the voice and the character prompt below. Edit either afterwards.</small>
+              <small>The voice, name and character prompt come with the preset; they show below for reference.</small>
             </label>
 
-            <label class="field">
-              <span>Voice</span>
-              <input
-                id="voice"
-                type="text"
-                list="voice-presets"
-                placeholder="Server default"
-                autocomplete="off"
-                spellcheck="false"
-              />
-              <datalist id="voice-presets">
-                <option value="Aiden"></option>
-                <option value="Ryan"></option>
-                <option value="Dylan"></option>
-                <option value="Eric"></option>
-                <option value="Ono_Anna"></option>
-                <option value="Serena"></option>
-                <option value="Sohee"></option>
-                <option value="Uncle_Fu"></option>
-                <option value="Vivian"></option>
-              </datalist>
-              <small>
-                Leave blank for the server's configured voice. Qwen3-TTS takes a
-                speaker name from the list; Breeze takes a description of at least
-                three words (for example "a gruff old sea captain") and designs
-                that voice once per server run.
-              </small>
-            </label>
+            <div class="field-group" id="custom-fields">
+              <label class="field">
+                <span>Voice</span>
+                <input
+                  id="voice"
+                  type="text"
+                  list="voice-presets"
+                  placeholder="Server default"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+                <datalist id="voice-presets">
+                  <option value="Aiden"></option>
+                  <option value="Ryan"></option>
+                  <option value="Dylan"></option>
+                  <option value="Eric"></option>
+                  <option value="Ono_Anna"></option>
+                  <option value="Serena"></option>
+                  <option value="Sohee"></option>
+                  <option value="Uncle_Fu"></option>
+                  <option value="Vivian"></option>
+                </datalist>
+                <small>
+                  A named server voice, a Qwen3-TTS speaker from the list, or for Breeze a
+                  description of at least three words (for example "a gruff old sea captain"),
+                  designed once per server run. Blank uses the server's configured voice.
+                </small>
+              </label>
+
+              <label class="field">
+                <span>Instructions</span>
+                <textarea id="instructions" rows="5" placeholder="You are a friendly voice assistant..."></textarea>
+              </label>
+            </div>
 
             <label class="field">
               <span>Microphone</span>
@@ -346,11 +367,6 @@
                 left to turn it off; the bar shows your live input while in a call.
               </small>
             </div>
-
-            <label class="field">
-              <span>Instructions</span>
-              <textarea id="instructions" rows="5" placeholder="You are a friendly voice assistant..."></textarea>
-            </label>
 
             <div class="field">
               <button id="restart-conversation" type="button" class="btn primary wide" disabled>
@@ -429,6 +445,6 @@
     </dialog>
 
     <script src="vendor/openai-realtime-agents.umd.js"></script>
-    <script type="module" src="main.js?v=audio-24k-v13"></script>
+    <script type="module" src="main.js?v=audio-24k-v14"></script>
   </body>
 </html>

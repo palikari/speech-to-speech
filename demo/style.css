@@ -2769,3 +2769,48 @@ body.cam-on .footer {
 }
 .thinking-dots i:nth-child(2) { animation-delay: 0.16s; }
 .thinking-dots i:nth-child(3) { animation-delay: 0.32s; }
+
+
+/* Character source: preset persona vs custom voice + prompt. The inactive side
+ * is greyed and non-interactive but stays visible for reference. */
+.mode-toggle {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.mode-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+}
+.mode-option:has(input:checked) {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+.mode-option input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.field.dim,
+.field-group.dim {
+  opacity: 0.45;
+  pointer-events: none;
+}
+.field.dim select,
+.field-group.dim input,
+.field-group.dim textarea {
+  border-style: dashed;
+}

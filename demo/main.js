@@ -17,9 +17,9 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v13";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v14";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v13";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v14";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -116,6 +116,7 @@ const STORAGE_KEYS = {
   directUrl: "s2s.ws.directUrl",
   voice: "s2s.ws.voice",
   instructions: "s2s.ws.instructions",
+  personaMode: "s2s.ws.personaMode", // "preset" | "custom"
   tools: "s2s.ws.tools",
   searchKey: "s2s.ws.searchKey",
   noiseGate: "s2s.ws.noiseGate",
@@ -212,6 +213,7 @@ function loadSettings() {
     directUrl: localStorage.getItem(STORAGE_KEYS.directUrl) || "",
     voice: localStorage.getItem(STORAGE_KEYS.voice) || DEFAULT_VOICE,
     instructions: localStorage.getItem(STORAGE_KEYS.instructions) || DEFAULT_INSTRUCTIONS,
+    personaMode: localStorage.getItem(STORAGE_KEYS.personaMode) || "",
     noiseGate: loadGateThreshold(),
     // Default WebSocket: the proven path stays the first-run experience.
     transport: localStorage.getItem(STORAGE_KEYS.transport) === "webrtc" ? "webrtc" : "ws",
@@ -238,6 +240,7 @@ function saveSettings(s) {
   localStorage.setItem(STORAGE_KEYS.directUrl, s.directUrl);
   localStorage.setItem(STORAGE_KEYS.voice, s.voice);
   localStorage.setItem(STORAGE_KEYS.instructions, s.instructions);
+  localStorage.setItem(STORAGE_KEYS.personaMode, s.personaMode || "");
   localStorage.setItem(STORAGE_KEYS.noiseGate, String(s.noiseGate));
   localStorage.setItem(STORAGE_KEYS.transport, s.transport);
   localStorage.setItem(STORAGE_KEYS.audioInputId, s.audioInputId || "");
@@ -368,6 +371,10 @@ const gateField = $("#gate-field");
 const inputVoice = $("#voice");
 /** @type {HTMLSelectElement} */
 const inputPersona = $("#persona");
+/** @type {NodeListOf<HTMLInputElement>} */
+const inputPersonaMode = document.querySelectorAll('input[name="persona-mode"]');
+const personaField = $("#persona-field");
+const customFields = $("#custom-fields");
 /** @type {HTMLSelectElement} */
 const inputAudioInput = $("#audio-input");
 /** @type {HTMLSelectElement} */
@@ -485,11 +492,12 @@ function personaRequestedIn(transcript) {
 function applyPersona(id) {
   const persona = PERSONAS[id];
   if (!persona) return false;
-  settings = { ...settings, voice: persona.voice, instructions: persona.instructions };
+  settings = { ...settings, voice: persona.voice, instructions: persona.instructions, personaMode: "preset" };
   saveSettings(settings);
   inputVoice.value = persona.voice;
   inputInstructions.value = persona.instructions;
   syncPersonaSelect();
+  setPersonaMode("preset");
   chat.setAssistantName(persona.name);
   if (client && LIVE_STATES.has(currentState)) {
     client.updateSession({ voice: persona.voice, instructions: persona.instructions });
@@ -628,12 +636,39 @@ function syncPersonaSelect() {
   inputPersona.value = match ? match[0] : "assistant";
 }
 
+/** @returns {"preset" | "custom"} */
+function currentPersonaMode() {
+  return [...inputPersonaMode].find((r) => r.checked)?.value === "custom" ? "custom" : "preset";
+}
+
+/** Grey out whichever side is not in use; in preset mode the custom fields
+ *  mirror the chosen preset so its voice and prompt stay visible. */
+function setPersonaMode(mode) {
+  const custom = mode === "custom";
+  for (const r of inputPersonaMode) r.checked = r.value === (custom ? "custom" : "preset");
+  personaField.classList.toggle("dim", custom);
+  customFields.classList.toggle("dim", !custom);
+  inputPersona.disabled = custom;
+  inputVoice.disabled = !custom;
+  inputInstructions.disabled = !custom;
+  if (!custom) {
+    const persona = PERSONAS[inputPersona.value];
+    if (persona) {
+      inputVoice.value = persona.voice;
+      inputInstructions.value = persona.instructions;
+    }
+  }
+}
+
 inputPersona.addEventListener("change", () => {
   const persona = PERSONAS[inputPersona.value];
   if (!persona) return;
   inputVoice.value = persona.voice;
   inputInstructions.value = persona.instructions;
 });
+for (const r of inputPersonaMode) {
+  r.addEventListener("change", () => setPersonaMode(currentPersonaMode()));
+}
 
 /** Render the persona dropdown from PERSONAS so labels live in one place. */
 for (const [id, p] of Object.entries(PERSONAS)) {
@@ -646,6 +681,8 @@ function openSettings() {
   inputVoice.value = settings.voice;
   inputInstructions.value = settings.instructions;
   syncPersonaSelect();
+  const savedMode = settings.personaMode || (currentPersonaId() ? "preset" : "custom");
+  setPersonaMode(savedMode);
   syncGateUi();
   updateRestartAvailability();
   void refreshAudioDeviceLists();
@@ -1184,6 +1221,7 @@ function readSettingsFromForm() {
     directUrl: allowDirect && !pinnedUrl ? inputLbUrl.value.trim() : settings.directUrl,
     voice: inputVoice.value.trim() || DEFAULT_VOICE,
     instructions: inputInstructions.value.trim() || DEFAULT_INSTRUCTIONS,
+    personaMode: currentPersonaMode(),
     noiseGate: readGateThreshold(),
     transport: /** @type {"ws" | "webrtc"} */ (
       transportSelectable()
