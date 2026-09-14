@@ -1728,8 +1728,10 @@ body.cam-on .footer {
   align-self: flex-end;
 }
 .bubble.tool {
-  --bubble-dx: -10px;
-  align-self: flex-start;
+  /* Tool calls are the assistant's doing: keep them on the assistant's side,
+   * tucked under its thinking bubble. */
+  --bubble-dx: 10px;
+  align-self: flex-end;
   display: flex;
   align-items: center;
   gap: 8px;

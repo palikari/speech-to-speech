@@ -17,9 +17,9 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v4";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v5";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v4";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v5";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
