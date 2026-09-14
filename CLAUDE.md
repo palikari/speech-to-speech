@@ -45,9 +45,13 @@ Server (port 8765) with the chosen defaults:
 
 ```bash
 .venv/bin/speech-to-speech serve --stt parakeet-tdt --llm_backend mlx-lm \
-  --tts qwen3 --model_name mlx-community/Qwen3.8-27B-8bit \
-  --qwen3_tts_mlx_quantization bf16 --enable_live_transcription
+  --model_name mlx-community/Qwen3.8-27B-8bit \
+  --tts breeze --breeze_tts_voice_path voices/assistant.wav --enable_live_transcription
 ```
+
+`voices/assistant.wav` is the designed assistant voice (committed, so both Macs
+sound the same). Delete it and change `--breeze_tts_instruct` to design a new
+one; it is regenerated on the next start with seed 0.
 
 Browser demo (port 7860), in a second terminal:
 
@@ -64,11 +68,13 @@ Then open http://localhost:7860/. oMLX on port 8000 is an unrelated app; leave i
   mlx-lm backend (`enable_thinking=False` in the chat template, LLM/language_model.py).
   Perceived "thinking" delay is time-to-first-token plus the sentence boundary
   before TTS; measure both before changing anything.
-- TTS target: Breeze TTS 2 bf16 (`mlx-community/Breeze-TTS-2-mlx`), streaming.
-  Model the handler on `TTS/qwen3_tts_handler.py` (mlx-audio based, streams
-  chunks, logs TTFA/RTF) plus `arguments_classes/qwen3_tts_arguments.py`,
-  register in `backend_registry.py`, and add "breeze" to the macOS TTS
-  allow-list in `s2s_pipeline.py`.
+- TTS: Breeze TTS 2 bf16 via `--tts breeze` (`TTS/breeze_tts_handler.py`,
+  `arguments_classes/breeze_tts_arguments.py`, registered in
+  `backend_registry.py`). Breeze's design mode samples a new voice identity per
+  call, so the handler designs one clip at startup (seeded) and clones it for
+  every utterance; `--breeze_tts_direction` adds a delivery instruction on top.
+  A multi-word `voice` in the Realtime session config is treated as a new
+  description and designed once per process.
 
 ## Current state
 
@@ -77,4 +83,14 @@ _Update at the end of a session that changed something._
 - 2026-09-14: Forked, remotes re-pointed, `main` fast-forwarded to upstream
   v1.0.0, branch `breeze-tts` created. mlx-audio switched to the palikari fork
   (0.5.3 + speed-ups); all handlers import, test suite passes, server starts
-  with the previous Qwen3-TTS config. Breeze handler not started yet.
+  with the previous Qwen3-TTS config.
+- 2026-09-14: Breeze handler done and live-tested (synthetic client, 3 turns,
+  1632 tests pass). Per turn on the M3 Ultra: VAD+STT ~0.1 s, LLM 1.95-2.5 s
+  to the first sentence, Breeze TTFA 0.33-0.40 s; last-speech-to-first-audio
+  2.3-3.0 s. TTS steady state ~1.8x real time.
+- Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
+  has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
+  re-processes the system prompt + history. Next: add a KV prompt cache
+  (mlx_lm make_prompt_cache) and TTFT logging, then consider a smaller or
+  4-bit LLM if still slow. Breeze `streaming_interval` 0.2 would trim ~0.15 s
+  of TTFA at some per-chunk overhead; untested.
