@@ -24,6 +24,25 @@ from speech_to_speech.utils.utils import _generate_id
 logger = logging.getLogger(__name__)
 
 _POSITIONAL_RE = re.compile(r"^__arg_\d+__$")
+
+# Native Qwen3-style tool calls. The chat template of Qwen3.x models teaches
+# this XML shape, and a model tends to drift back to it after one tool exchange
+# even when the system prompt asked for the ``<code>func()</code>`` form:
+#
+#   <tool_call>
+#   <function=web_search>
+#   <parameter=query>
+#   weather in Johns Creek
+#   </parameter>
+#   </function>
+#   </tool_call>
+NATIVE_TOOL_CALL_ENTER = "<tool_call>"
+NATIVE_TOOL_CALL_END = "</tool_call>"
+_XML_FUNCTION_RE = re.compile(
+    r"<function=([A-Za-z_][\w.]*)>(.*?)(?:</function>|(?=<function=)|\Z)",
+    re.DOTALL,
+)
+_XML_PARAM_RE = re.compile(r"<parameter=([A-Za-z_]\w*)>\s*(.*?)\s*</parameter>", re.DOTALL)
 _LENIENT_CALL_RE = re.compile(
     r"\b[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*\s*"
     r"\((?:[^()\"']+|\"(?:\\.|[^\"])*\"|'(?:\\.|[^'])*')*\)"
@@ -283,6 +302,35 @@ def parse_multiple_functions(function_strings: List[str]) -> List[FunctionToolCa
         except Exception:
             continue
     return results
+
+
+def _coerce_xml_value(raw: str) -> Any:
+    """Parameters arrive as text; recover JSON scalars/containers when the text is one."""
+    value = raw.strip()
+    if not value:
+        return value
+    if value[0] in "[{" or value in ("true", "false", "null") or re.fullmatch(r"-?\d+(\.\d+)?", value):
+        try:
+            return json.loads(value)
+        except ValueError:
+            return value
+    return value
+
+
+def parse_xml_tool_calls(text: str) -> List[FunctionToolCall]:
+    """Parse native ``<tool_call><function=...><parameter=...>`` blocks."""
+    calls: List[FunctionToolCall] = []
+    for match in _XML_FUNCTION_RE.finditer(text):
+        name, body = match.group(1), match.group(2)
+        parameters = {key: _coerce_xml_value(value) for key, value in _XML_PARAM_RE.findall(body)}
+        calls.append(
+            FunctionToolCall(
+                function_name=name,
+                parameters=parameters,
+                original_string=match.group(0).strip(),
+            )
+        )
+    return calls
 
 
 def extract_function_calls_from_text(text: str, block_regex: str = ".*") -> Tuple[str, List[FunctionToolCall]]:

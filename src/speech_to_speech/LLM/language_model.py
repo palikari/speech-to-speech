@@ -43,7 +43,12 @@ from speech_to_speech.LLM.chat import (
 )
 from speech_to_speech.LLM.compaction_prompt import CompactGenerateFn, build_compactor
 from speech_to_speech.LLM.text_prompt import build_text_system_prompt
-from speech_to_speech.LLM.tool_call.function_call import extract_function_calls_from_text
+from speech_to_speech.LLM.tool_call.function_call import (
+    NATIVE_TOOL_CALL_END,
+    NATIVE_TOOL_CALL_ENTER,
+    extract_function_calls_from_text,
+    parse_xml_tool_calls,
+)
 from speech_to_speech.LLM.tool_call.function_tool import FunctionTool
 from speech_to_speech.LLM.tool_call.tool_prompt import END_CODE, ENTER_CODE, build_block_regex, build_tool_system_prompt
 from speech_to_speech.LLM.utils import (
@@ -313,6 +318,22 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
             ctx.enter_code = enter_code
             ctx.end_code = end_code
 
+    @staticmethod
+    def _find_tool_block_start(printable_text: str, ctx: "StreamContext") -> tuple[int, str, str | None, bool] | None:
+        """Earliest tool block in *printable_text*: (index, enter, end, is_native).
+
+        Accepts both the prompted ``<code>…</code>`` form and the model's native
+        ``<tool_call>…</tool_call>`` XML form.
+        """
+        candidates: list[tuple[int, str, str | None, bool]] = []
+        if ctx.enter_code and ctx.enter_code in printable_text:
+            candidates.append((printable_text.index(ctx.enter_code), ctx.enter_code, ctx.end_code, False))
+        if NATIVE_TOOL_CALL_ENTER in printable_text:
+            candidates.append(
+                (printable_text.index(NATIVE_TOOL_CALL_ENTER), NATIVE_TOOL_CALL_ENTER, NATIVE_TOOL_CALL_END, True)
+            )
+        return min(candidates, key=lambda c: c[0]) if candidates else None
+
     def _process_printable_text(
         self,
         printable_text: str,
@@ -346,8 +367,8 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
                 cancel_generation=ctx.cancel_generation,
             )
 
-        while ctx.enter_code and ctx.enter_code in printable_text:
-            idx = printable_text.index(ctx.enter_code)
+        while ctx.enter_code and (found := self._find_tool_block_start(printable_text, ctx)) is not None:
+            idx, enter_marker, end_marker, native = found
             before = printable_text[:idx]
             code_and_after = printable_text[idx:]
             if text_only and before:
@@ -358,14 +379,17 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
             if ctx.sentence_batch:
                 chunks.append(text_chunk(" ".join(ctx.sentence_batch)))
                 ctx.sentence_batch = []
-            if not ctx.block_regex or not ctx.end_code or ctx.end_code not in code_and_after:
+            if not ctx.block_regex or not end_marker or end_marker not in code_and_after:
                 # Preserve the incomplete block until more streamed text arrives.
                 return chunks, tools, code_and_after
 
-            block_end = code_and_after.index(ctx.end_code) + len(ctx.end_code)
+            block_end = code_and_after.index(end_marker) + len(end_marker)
             complete_block = code_and_after[:block_end]
             printable_text = code_and_after[block_end:]
-            _, func_calls = extract_function_calls_from_text(complete_block, ctx.block_regex)
+            if native:
+                func_calls = parse_xml_tool_calls(complete_block)
+            else:
+                _, func_calls = extract_function_calls_from_text(complete_block, ctx.block_regex)
             parsed_tools: list[ResponseFunctionToolCall] = []
             for fc in func_calls:
                 try:
@@ -395,11 +419,14 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
             # This keeps text-only output verbatim without exposing tool syntax.
             pending_marker = ""
             if ctx.enter_code:
-                max_prefix_length = min(len(ctx.enter_code) - 1, len(printable_text))
-                for prefix_length in range(max_prefix_length, 0, -1):
-                    if printable_text.endswith(ctx.enter_code[:prefix_length]):
-                        pending_marker = printable_text[-prefix_length:]
-                        printable_text = printable_text[:-prefix_length]
+                for marker in (ctx.enter_code, NATIVE_TOOL_CALL_ENTER):
+                    max_prefix_length = min(len(marker) - 1, len(printable_text))
+                    for prefix_length in range(max_prefix_length, 0, -1):
+                        if printable_text.endswith(marker[:prefix_length]):
+                            pending_marker = printable_text[-prefix_length:]
+                            break
+                    if pending_marker:
+                        printable_text = printable_text[: -len(pending_marker)]
                         break
             if printable_text:
                 chunks.append(text_chunk(printable_text))

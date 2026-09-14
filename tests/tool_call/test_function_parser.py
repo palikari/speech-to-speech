@@ -283,3 +283,29 @@ class TestToRealtimeToolCall:
         result = fc.to_realtime_function_tool_call([tool])
         args = json.loads(result.arguments)
         assert args == {"arg_0": 10, "x": 5}
+
+
+def test_parse_xml_tool_calls_handles_qwen_native_block():
+    from speech_to_speech.LLM.tool_call.function_call import parse_xml_tool_calls
+
+    block = (
+        "<tool_call>\n<function=web_search>\n<parameter=query>\n"
+        "preamble to the US Constitution text\n</parameter>\n"
+        "<parameter=limit>\n3\n</parameter>\n</function>\n</tool_call>"
+    )
+    calls = parse_xml_tool_calls(block)
+
+    assert [c.function_name for c in calls] == ["web_search"]
+    assert calls[0].parameters == {"query": "preamble to the US Constitution text", "limit": 3}
+
+
+def test_parse_xml_tool_calls_tolerates_missing_function_close_and_multiple_calls():
+    from speech_to_speech.LLM.tool_call.function_call import parse_xml_tool_calls
+
+    block = (
+        "<tool_call>\n<function=a>\n<parameter=x>\n1\n</parameter>\n"
+        "<function=b>\n<parameter=y>\nhello world\n</parameter>\n</function>\n</tool_call>"
+    )
+    calls = parse_xml_tool_calls(block)
+
+    assert [(c.function_name, c.parameters) for c in calls] == [("a", {"x": 1}), ("b", {"y": "hello world"})]

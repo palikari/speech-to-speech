@@ -168,6 +168,7 @@ def agents_sdk_bundle():
         raise HTTPException(status_code=503, detail="Run npm ci in demo/")
     return FileResponse(path, media_type="text/javascript")
 
+
 # Wire HF OAuth before the app serves (no-op unless the OAuth env is present).
 # Sign-in only matters when we're metering (prod Space), so gate it on that.
 AUTH_ENABLED = LIMITER_ENABLED and auth.attach(app)
@@ -301,6 +302,12 @@ async def search(req: SearchRequest):
         kg = data.get("knowledgeGraph") or {}
         answer = kg.get("description") or None
 
+    logger.info(
+        "web_search %r -> answer=%r; %s",
+        query,
+        (answer or "")[:160],
+        " | ".join(f"{r['title'][:60]}: {r['snippet'][:120]}" for r in results[:3]) or "no results",
+    )
     return JSONResponse({"query": query, "answer": answer, "results": results})
 
 
@@ -374,9 +381,7 @@ async def session(request: Request):
     if tracked:
         rem = await asyncio.to_thread(limiter.remaining, keys, tier)
         if rem is not None and rem <= 0:
-            resp = JSONResponse(
-                {"tier": tier, "reason": "limit", "remainingSec": 0}, status_code=402
-            )
+            resp = JSONResponse({"tier": tier, "reason": "limit", "remainingSec": 0}, status_code=402)
             if set_cookie:
                 auth.set_anon_cookie(resp, set_cookie)
             return resp
@@ -472,11 +477,7 @@ def _load_balancer_headers(request: Request | None = None) -> dict[str, str]:
 
 def _log_load_balancer_failure(operation: str, response: httpx.Response) -> None:
     """Log enough ingress metadata to diagnose failures without credentials."""
-    response_headers = {
-        name: value
-        for name in LB_FAILURE_HEADER_NAMES
-        if (value := response.headers.get(name))
-    }
+    response_headers = {name: value for name in LB_FAILURE_HEADER_NAMES if (value := response.headers.get(name))}
     body = " ".join(response.text[:500].split())
     logger.warning(
         "Load balancer %s failed status=%s headers=%s body=%s",
@@ -537,9 +538,7 @@ async def queue_status(queue_id: str, request: Request):
     if tracked:
         rem = await asyncio.to_thread(limiter.remaining, keys, tier)
         if rem is not None and rem <= 0:
-            resp = JSONResponse(
-                {"tier": tier, "reason": "limit", "remainingSec": 0}, status_code=402
-            )
+            resp = JSONResponse({"tier": tier, "reason": "limit", "remainingSec": 0}, status_code=402)
             if set_cookie:
                 auth.set_anon_cookie(resp, set_cookie)
             return resp
@@ -576,12 +575,14 @@ async def _finalize_grant(data, keys, tier, tracked, set_cookie):
         await asyncio.to_thread(limiter.begin, data["session_id"], keys, tier)
         remaining = await asyncio.to_thread(limiter.remaining, keys, tier)
 
-    data.update({
-        "tier": tier,
-        "limited": tracked,
-        "remainingSec": remaining,
-        "heartbeatSec": limiter.HEARTBEAT_SEC,
-    })
+    data.update(
+        {
+            "tier": tier,
+            "limited": tracked,
+            "remainingSec": remaining,
+            "heartbeatSec": limiter.HEARTBEAT_SEC,
+        }
+    )
     resp = JSONResponse(data)
     if set_cookie:
         auth.set_anon_cookie(resp, set_cookie)

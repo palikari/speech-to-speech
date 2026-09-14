@@ -49,7 +49,7 @@ import { OrbVisualiser, VIS_FFT_SIZE } from "./ws/orb-visualizer.js";
 import { SentAudioRecorder } from "./ws/user-audio-recorder.js";
 
 export const AUDIO_SAMPLE_RATE = 24_000;
-export const AUDIO_WORKLET_VERSION = "audio-24k-v1";
+export const AUDIO_WORKLET_VERSION = "audio-24k-v2";
 const MIC_CHUNK_MS = 40;
 const CAPTURE_CONFIG_TIMEOUT_MS = 2_000;
 const SPEAKING_OPEN_DB = -50;
@@ -172,6 +172,13 @@ export class S2sRealtimeClient extends EventTarget {
     if (!this.options.micStream?.getAudioTracks()[0]) throw new Error("No microphone track available");
 
     await this._setupAudio();
+    if (this.options.transport === "websocket" && this._outAnalyser) {
+      // Report what is actually leaving the speakers (not what was queued), so
+      // the UI can hold transcript bubbles until the words are really spoken.
+      // Started here rather than in _setupAudio so setup alone owns no timers;
+      // close() clears it.
+      this._levelTimer = setInterval(() => this._emitOutputLevel(), OUTPUT_LEVEL_POLL_MS);
+    }
     const { OpenAIRealtimeWebRTC, OpenAIRealtimeWebSocket, RealtimeSession } = sdk();
     if (this.options.transport === "websocket") {
       this._transport = new OpenAIRealtimeWebSocket({ useInsecureApiKey: true });
@@ -348,9 +355,6 @@ export class S2sRealtimeClient extends EventTarget {
       this._outAnalyser = output;
       this._visualiser = new OrbVisualiser(micAnalyser, output, () => this._aiSpeaking);
       this._visualiser.start();
-      // Report what is actually leaving the speakers (not what was queued), so
-      // the UI can hold transcript bubbles until the words are really spoken.
-      this._levelTimer = window.setInterval(() => this._emitOutputLevel(), OUTPUT_LEVEL_POLL_MS);
     }
     await this.setAudioOutputDevice(this.options.audioOutputId || "");
   }
@@ -404,7 +408,7 @@ export class S2sRealtimeClient extends EventTarget {
 
   /** @param {AnalyserNode | null} analyser */
   _rms(analyser) {
-    if (!analyser) return 0;
+    if (!analyser || typeof analyser.getByteTimeDomainData !== "function") return 0;
     analyser.getByteTimeDomainData(this._levelBuf);
     let sum = 0;
     for (const value of this._levelBuf) {

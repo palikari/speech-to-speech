@@ -540,3 +540,70 @@ def test_cancelled_local_tool_turn_rolls_back_fast_output():
     assert chat.buffer == [user]
     assert not chat.has_pending_tool_calls()
     assert chat._provisional_generations == {}
+
+
+def _search_ctx(**kwargs):
+    return StreamContext(
+        function_tools=[
+            FunctionTool(
+                type="function",
+                name="web_search",
+                description="Search the web.",
+                parameters={
+                    "type": "object",
+                    "properties": {"query": {"type": "string"}},
+                    "required": ["query"],
+                },
+            )
+        ],
+        block_regex=build_block_regex(),
+        enter_code=ENTER_CODE,
+        end_code=END_CODE,
+        **kwargs,
+    )
+
+
+def test_local_tool_parser_accepts_native_xml_tool_call():
+    handler = object.__new__(LanguageModelHandler)
+    ctx = _search_ctx()
+    text = (
+        "Let me check. <tool_call>\n<function=web_search>\n<parameter=query>\n"
+        "weather in Johns Creek, Georgia\n</parameter>\n</function>\n</tool_call>"
+    )
+
+    chunks, tools, remaining = handler._process_printable_text(text, None, [], ctx)
+
+    assert [chunk.text for chunk in chunks] == ["Let me check.", ""]
+    assert [tool.name for tool in tools] == ["web_search"]
+    assert json.loads(tools[0].arguments) == {"query": "weather in Johns Creek, Georgia"}
+    assert remaining == ""
+
+
+def test_local_tool_parser_holds_partial_native_block_until_it_closes():
+    handler = object.__new__(LanguageModelHandler)
+    ctx = _search_ctx()
+
+    first, tools, remaining = handler._process_printable_text(
+        "<tool_call>\n<function=web_search>\n<parameter=query>\nmoon dist", None, [], ctx
+    )
+    assert first == [] and tools == []
+    assert remaining.startswith("<tool_call>")
+
+    second, tools, remaining = handler._process_printable_text(
+        remaining + "ance\n</parameter>\n</function>\n</tool_call> Done.", None, tools, ctx
+    )
+    assert [tool.name for tool in tools] == ["web_search"]
+    assert json.loads(tools[0].arguments) == {"query": "moon distance"}
+    assert remaining.strip() == "Done."
+
+
+def test_text_only_stream_withholds_native_marker_prefix():
+    handler = object.__new__(LanguageModelHandler)
+    ctx = _search_ctx()
+
+    response = RealtimeResponseCreateParams(output_modalities=["text"])
+
+    chunks, tools, remaining = handler._process_printable_text("Sure <tool_ca", None, [], ctx, response=response)
+
+    assert [chunk.text for chunk in chunks] == ["Sure "]
+    assert remaining == "<tool_ca"

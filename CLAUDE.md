@@ -117,8 +117,15 @@ _Update at the end of a session that changed something._
   model / Warming up the voice; 25 s fail-safe), and assistant bubbles now
   stay while speaker output is audible (client emits `output-level`; chat
   view bumps the bubble's expiry, fades 3 s after the last word). Assets are
-  cache-busted with `?v=warmup-1` in index.html/main.js; bump it when
+  cache-busted with `?v=audio-24k-v2` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
   editing demo JS/CSS or browsers keep the old files.
+- 2026-09-14 (tools): the LLM handler now parses the model's native
+  `<tool_call><function=…><parameter=…>` XML blocks as well as the prompted
+  `<code>func()</code>` form (`LLM/tool_call/function_call.py:parse_xml_tool_calls`,
+  `LLM/language_model.py:_find_tool_block_start`). Qwen3.8 follows the prompt
+  for the first call and drifts to its native format afterwards; before this
+  the drifted calls were spoken aloud. Verified live: 3 consecutive searches
+  parsed. demo/server.py now logs each search's query and top results.
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache
