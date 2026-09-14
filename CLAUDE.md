@@ -88,9 +88,29 @@ _Update at the end of a session that changed something._
   1632 tests pass). Per turn on the M3 Ultra: VAD+STT ~0.1 s, LLM 1.95-2.5 s
   to the first sentence, Breeze TTFA 0.33-0.40 s; last-speech-to-first-audio
   2.3-3.0 s. TTS steady state ~1.8x real time.
+- 2026-09-14 (later): Breeze reliability work. Found and fixed three things:
+  (1) the model sometimes emits silence instead of end-of-speech and runs to
+  max_tokens (60 s of dead air while the mic stays closed); (2) a designed
+  reference clip that hit that failure poisoned every later clone (the voice
+  went quiet after one sentence); (3) an early trailing-silence guard at 1.5 s
+  cut replies at the sentence boundary because inter-sentence pauses in the
+  server ran 1.5 s+. Now: text is synthesized sentence by sentence, each with
+  a text-based frame budget and a 1.2 s trailing-silence cutoff; a runaway
+  sentence is cut and the next one still plays; voice design is budgeted,
+  trimmed, requires 6 s of speech and retries with the next seed. Verified
+  with STT-transcribed replies: 10/10 complete over 15 sentences (was 2/10).
+  Measured pauses: inside a sentence <= 0.9 s (comma); before end-of-speech
+  up to ~1.7 s. Demo voice field now takes a Breeze description.
+- Unexplained: the same text + reference never runs away in a lab script
+  (45/45), but ~1 in 5 sentences did in the server before the per-sentence
+  change. Not the LLM in-process, threads, text formatting, generator
+  close, or concurrent GPU work (all tested). If it resurfaces, compare
+  `--log_level debug` chunk logs (per-chunk peak/tokens) against the lab.
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache
   (mlx_lm make_prompt_cache) and TTFT logging, then consider a smaller or
   4-bit LLM if still slow. Breeze `streaming_interval` 0.2 would trim ~0.15 s
-  of TTFA at some per-chunk overhead; untested.
+  of TTFA at some per-chunk overhead; untested. Voice design for some
+  descriptions ("slow, weathered") is unreliable; a real reference clip is
+  the robust path once Michael's clips are on this machine.

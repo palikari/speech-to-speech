@@ -53,7 +53,13 @@ class BreezeTTSHandlerArguments:
     breeze_tts_max_tokens: int = field(
         default=750,
         metadata={
-            "help": "Upper cap on codec frames per utterance (12.5 frames per second of audio, so 750 is 60 s). Generation stops at end-of-speech well before this in normal use."
+            "help": "Hard cap on codec frames per utterance (12.5 frames per second of audio, so 750 is 60 s). Each utterance also gets a budget estimated from its text, so this only matters for very long replies."
+        },
+    )
+    breeze_tts_max_trailing_silence: float = field(
+        default=1.2,
+        metadata={
+            "help": "Stop a sentence once the model has produced this many seconds of silence after speech. Guards against the model emitting silence instead of end-of-speech; text is synthesized sentence by sentence so only pauses within a sentence count. Measured: pauses inside a sentence stay under 1 s; the model's silence before end-of-speech runs up to ~1.7 s and sometimes never ends. 0 disables. Default is 1.2."
         },
     )
     breeze_tts_temperature: float = field(

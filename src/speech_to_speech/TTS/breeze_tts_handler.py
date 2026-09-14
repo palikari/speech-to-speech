@@ -10,7 +10,10 @@ cloned for every utterance, so the voice does not drift between sentences.
 from __future__ import annotations
 
 import logging
+import math
+import re
 import tempfile
+import unicodedata
 from pathlib import Path
 from sys import platform
 from threading import Event
@@ -54,6 +57,26 @@ BOOTSTRAP_TEXT = (
     "and I'm happy to go into more detail whenever you ask."
 )
 MIN_DESCRIPTION_WORDS = 3
+FRAMES_PER_SECOND = 12.5
+# Utterance budget: the model occasionally emits silent frames instead of its
+# end-of-speech token and would run to max_tokens (60 s). Cap each utterance at
+# a generous estimate of its spoken length, and stop on sustained silence.
+ESTIMATED_CHARS_PER_SECOND = 12.0
+PUNCTUATION_PAUSE_SECONDS = 0.4
+BASE_UTTERANCE_SECONDS = 2.0
+UTTERANCE_SAFETY_MARGIN = 1.6
+MIN_UTTERANCE_FRAMES = 60  # ~5 s
+DEFAULT_MAX_TRAILING_SILENCE = 1.2
+# Sentence boundaries (Latin and CJK terminators) and line breaks. Each sentence
+# is generated as its own utterance: pauses between sentences are then never
+# mistaken for a runaway, and a runaway loses at most one sentence.
+SENTENCE_SPLIT = re.compile(r"(?<=[.!?\u3002\uff01\uff1f])\s+|\n+")
+SILENCE_THRESHOLD = int(32768 * 0.01)
+TRAILING_SILENCE_KEEP_SECONDS = 0.3
+# A designed reference clip must contain real speech; Breeze wants 5-15 s.
+MIN_DESIGN_SPEECH_SECONDS = 6.0
+MAX_DESIGN_CLIP_SECONDS = 15.0
+DESIGN_ATTEMPTS = 3
 
 
 class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
@@ -83,6 +106,7 @@ class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
         temperature: float = 0.9,
         top_k: int = 50,
         seed: int = 0,
+        max_trailing_silence: float = DEFAULT_MAX_TRAILING_SILENCE,
         blocksize: int = 512,
         gen_kwargs: dict[str, Any] | None = None,
         cancel_scope: CancelScope | None = None,
@@ -110,6 +134,7 @@ class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
         self.temperature = float(temperature)
         self.top_k = int(top_k)
         self.seed = int(seed)
+        self.max_trailing_silence = float(max_trailing_silence)
         self.blocksize = int(blocksize)
         self.gen_kwargs = gen_kwargs or {}
         self._temp_files: set[str] = set()
@@ -185,10 +210,8 @@ class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
             )
         self.ref_audio, self.ref_text = self._design_voice(self.instruct, self.voice_path)
 
-    def _design_voice(self, description: str, save_to: Path | None) -> tuple[str, str]:
-        """Generate one clip from a description and return (path, transcript)."""
-        logger.info("Breeze TTS voice: designing from description (seed %d): %s", self.seed, description)
-        started = perf_counter()
+    def _design_once(self, description: str, seed: int) -> np.ndarray:
+        """One design pass; returns float32 audio at the model rate, trailing silence trimmed."""
         with MLXLockContext(handler_name="BreezeTTS", timeout=60.0) as acquired:
             if not acquired:
                 raise TimeoutError("Timed out waiting for MLX lock")
@@ -197,10 +220,10 @@ class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
                     text=BOOTSTRAP_TEXT,
                     instruct=description,
                     cfg_scale=self.cfg_scale,
-                    max_tokens=self.max_tokens,
+                    max_tokens=self._estimate_max_tokens(BOOTSTRAP_TEXT),
                     temperature=self.temperature,
                     top_k=self.top_k,
-                    seed=self.seed,
+                    seed=seed,
                     stream=False,
                     split_pattern=None,
                     verbose=False,
@@ -212,8 +235,47 @@ class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
             if piece is not None and piece.size > 0:
                 pieces.append(piece)
         if not pieces:
-            raise RuntimeError("Breeze TTS produced no audio while designing the voice.")
+            return np.zeros(0, dtype=np.float32)
         audio: np.ndarray = np.concatenate(pieces)
+        return self._trim_trailing_silence(audio, self.sample_rate)
+
+    @staticmethod
+    def _trim_trailing_silence(audio: np.ndarray, sr: int) -> np.ndarray:
+        """Cut everything after the last audible sample plus a short tail."""
+        loud = np.flatnonzero(np.abs(audio) > SILENCE_THRESHOLD / 32768)
+        if loud.size == 0:
+            return np.zeros(0, dtype=np.float32)
+        end = min(len(audio), int(loud[-1]) + 1 + int(sr * TRAILING_SILENCE_KEEP_SECONDS))
+        return audio[:end]
+
+    def _design_voice(self, description: str, save_to: Path | None) -> tuple[str, str]:
+        """Design a clip from a description and return (path, transcript).
+
+        The model sometimes emits silence instead of end-of-speech; a reference
+        clip that is mostly silence makes every later clone go quiet early. So
+        each attempt is budgeted and trimmed, and a clip with too little speech
+        is retried with the next seed.
+        """
+        started = perf_counter()
+        best: np.ndarray = np.zeros(0, dtype=np.float32)
+        for attempt in range(DESIGN_ATTEMPTS):
+            seed = self.seed + attempt
+            logger.info("Breeze TTS voice: designing from description (seed %d): %s", seed, description)
+            audio = self._design_once(description, seed)
+            speech_seconds = audio.size / self.sample_rate
+            if speech_seconds >= MIN_DESIGN_SPEECH_SECONDS:
+                best = audio
+                break
+            logger.warning(
+                "Breeze TTS voice: design attempt with seed %d produced only %.1fs of speech; retrying",
+                seed,
+                speech_seconds,
+            )
+            if audio.size > best.size:
+                best = audio
+        if best.size == 0:
+            raise RuntimeError("Breeze TTS produced no audio while designing the voice.")
+        audio = best[: int(MAX_DESIGN_CLIP_SECONDS * self.sample_rate)]
 
         if save_to is not None:
             save_to.parent.mkdir(parents=True, exist_ok=True)
@@ -246,12 +308,27 @@ class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
         except Exception as e:
             logger.warning("Warmup generation failed: %s", e)
 
+    def _estimate_max_tokens(self, text: str) -> int:
+        """Frame budget for one utterance: generous estimate of its spoken length, capped by max_tokens."""
+        text = (text or "").strip()
+        if not text:
+            return min(self.max_tokens, MIN_UTTERANCE_FRAMES)
+        char_count = len(re.sub(r"\s+", "", text))
+        punctuation_count = sum(unicodedata.category(ch).startswith("P") for ch in text)
+        estimated_seconds = (
+            char_count / ESTIMATED_CHARS_PER_SECOND
+            + punctuation_count * PUNCTUATION_PAUSE_SECONDS
+            + BASE_UTTERANCE_SECONDS
+        )
+        frames = math.ceil(estimated_seconds * FRAMES_PER_SECOND * UTTERANCE_SAFETY_MARGIN)
+        return max(MIN_UTTERANCE_FRAMES, min(self.max_tokens, frames))
+
     def _generation_kwargs(self, text: str) -> dict[str, Any]:
         kwargs: dict[str, Any] = {
             "text": text,
             "ref_audio": self.ref_audio,
             "ref_text": self.ref_text,
-            "max_tokens": self.max_tokens,
+            "max_tokens": self._estimate_max_tokens(text),
             "temperature": self.temperature,
             "top_k": self.top_k,
             "stream": True,
@@ -265,12 +342,29 @@ class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
         kwargs.update(self.gen_kwargs)
         return kwargs
 
+    @staticmethod
+    def _split_sentences(text: str) -> list[str]:
+        parts = [p.strip() for p in SENTENCE_SPLIT.split(text or "") if p and p.strip()]
+        return parts or [(text or "").strip()]
+
     def _generate(self, text: str) -> Iterator[np.ndarray]:
         with MLXLockContext(handler_name="BreezeTTS", timeout=10.0) as acquired:
             if not acquired:
                 raise TimeoutError("Timed out waiting for MLX lock")
             label = "clone+direction" if self.direction else "clone"
-            yield from self._stream(self.model.generate(**self._generation_kwargs(text)), label=label)
+            for sentence in self._split_sentences(text):
+                kwargs = self._generation_kwargs(sentence)
+                if logger.isEnabledFor(logging.DEBUG):
+                    import threading
+
+                    shown = {k: v for k, v in kwargs.items() if k not in ("text", "ref_text")}
+                    logger.debug(
+                        "Breeze-TTS generate thread=%s text=%r kwargs=%s",
+                        threading.current_thread().name,
+                        sentence,
+                        shown,
+                    )
+                yield from self._stream(self.model.generate(**kwargs), label=label)
 
     @staticmethod
     def _to_numpy(audio: Any) -> np.ndarray | None:
@@ -315,6 +409,9 @@ class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
         first_chunk = True
         found_speech = False
         leftover = np.array([], dtype=np.int16)
+        trailing_silence = 0
+        max_trailing = int(PIPELINE_SR * max(0.0, getattr(self, "max_trailing_silence", DEFAULT_MAX_TRAILING_SILENCE)))
+        stopped_on_silence = False
 
         for item in gen:
             if cancel_gen is not None and self.cancel_scope is not None and self.cancel_scope.is_stale(cancel_gen):
@@ -324,6 +421,16 @@ class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
             audio_chunk, sr = self._prepare_audio_chunk(item)
             if audio_chunk is None or sr is None or audio_chunk.size == 0:
                 continue
+            if logger.isEnabledFor(logging.DEBUG):
+                peak = float(np.max(np.abs(audio_chunk))) if audio_chunk.size else 0.0
+                logger.debug(
+                    "Breeze-TTS chunk sr=%s samples=%d tokens=%s peak=%.4f final=%s",
+                    sr,
+                    audio_chunk.size,
+                    getattr(item, "token_count", None),
+                    peak,
+                    getattr(item, "is_final_chunk", None),
+                )
 
             if first_chunk:
                 logger.info(f"Breeze-TTS TTFA: {perf_counter() - start:.2f}s ({label})")
@@ -334,14 +441,26 @@ class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
 
             # Trim the initial silent ramp-up but keep 40 ms of preroll so soft
             # initial phonemes are not shaved off.
+            above = np.abs(audio_chunk) > SILENCE_THRESHOLD
             if not found_speech:
-                threshold = int(32768 * 0.01)
-                above = np.abs(audio_chunk) > threshold
                 if not np.any(above):
                     continue
                 start_idx = max(0, int(np.argmax(above)) - int(PIPELINE_SR * 0.040))
                 audio_chunk = audio_chunk[start_idx:]
+                above = above[start_idx:]
                 found_speech = True
+
+            # Stop once the model has gone quiet for longer than any natural
+            # pause; it sometimes emits silence instead of end-of-speech.
+            if max_trailing > 0:
+                if np.any(above):
+                    trailing_silence = len(audio_chunk) - int(np.flatnonzero(above)[-1]) - 1
+                else:
+                    trailing_silence += len(audio_chunk)
+                if trailing_silence >= max_trailing:
+                    keep = len(audio_chunk) - trailing_silence + int(PIPELINE_SR * TRAILING_SILENCE_KEEP_SECONDS)
+                    audio_chunk = audio_chunk[: max(0, keep)]
+                    stopped_on_silence = True
 
             audio_chunk = np.concatenate([leftover, audio_chunk])
             n = (len(audio_chunk) // self.blocksize) * self.blocksize
@@ -349,6 +468,17 @@ class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
                 yield audio_chunk[i : i + self.blocksize]
                 total_samples += self.blocksize
             leftover = audio_chunk[n:]
+
+            if stopped_on_silence:
+                logger.info(
+                    "Breeze-TTS stopped after %.1fs of trailing silence (%s)",
+                    max_trailing / PIPELINE_SR,
+                    label,
+                )
+                close = getattr(gen, "close", None)
+                if callable(close):
+                    close()
+                break
 
         if len(leftover) > 0:
             yield np.pad(leftover, (0, self.blocksize - len(leftover)))
