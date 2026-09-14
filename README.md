@@ -335,7 +335,10 @@ and cloned for every utterance, so the voice stays consistent. `--breeze_tts_voi
 that clip and reuses it on later starts. To clone your own voice pass `--breeze_tts_ref_audio` with
 its exact transcript in `--breeze_tts_ref_text`; `--breeze_tts_direction "Speak slowly."` adds a
 delivery instruction on top of either voice. `--breeze_tts_streaming_interval` (default 0.4 s)
-trades time-to-first-audio against per-chunk overhead.
+trades time-to-first-audio against per-chunk overhead. Text is synthesized sentence by sentence
+with a repetition penalty (`--breeze_tts_repetition_penalty`, default 1.2) and a trailing-silence
+cutoff (`--breeze_tts_max_trailing_silence`, default 1.2 s), which together stop the model's
+occasional held sounds and silence-instead-of-end-of-speech.
 
 To compare the MLX quantization variants locally:
 

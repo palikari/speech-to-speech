@@ -101,11 +101,17 @@ _Update at the end of a session that changed something._
   with STT-transcribed replies: 10/10 complete over 15 sentences (was 2/10).
   Measured pauses: inside a sentence <= 0.9 s (comma); before end-of-speech
   up to ~1.7 s. Demo voice field now takes a Breeze description.
-- Unexplained: the same text + reference never runs away in a lab script
-  (45/45), but ~1 in 5 sentences did in the server before the per-sentence
-  change. Not the LLM in-process, threads, text formatting, generator
-  close, or concurrent GPU work (all tested). If it resurfaces, compare
-  `--log_level debug` chunk logs (per-chunk peak/tokens) against the lab.
+- Explained: the "lab never fails, server does" gap was the lab's fault:
+  fixed seeds 0-5 reused everywhere, i.e. six identical random streams.
+  Unseeded, the model fails at the same rate everywhere. Lesson for any
+  future Breeze measurement: never pass a seed; run 10+ unseeded trials.
+- Michael's browser test: "Born ready." came out as a held "borrrrr" (5 s
+  for two words). Same mechanism as the silence runaway: one codec token
+  repeated. Unseeded measurement over 80 sentences: 5 runaways at
+  repetition_penalty 1.0, 2 at 1.1, 0 at 1.2 with all transcripts complete.
+  Default is now 1.2 (`--breeze_tts_repetition_penalty`); per-sentence
+  synthesis keeps the penalised history short. Live: 12/12 complete
+  including one-word answers, 0 guard firings.
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache

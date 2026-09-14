@@ -327,3 +327,17 @@ def test_runaway_sentence_does_not_lose_the_next_one(monkeypatch, tmp_path):
 
     assert [c["text"] for c in fake.calls[calls_before:]] == ["First sentence runs away.", "Second sentence is fine."]
     assert 1.3 <= sum(len(b) for b in blocks) / PIPELINE_SR <= 3.0
+
+
+def test_repetition_penalty_applies_to_utterances_and_design(monkeypatch, tmp_path):
+    _handler, fake = _make_handler(monkeypatch, tmp_path, repetition_penalty=1.15)
+
+    design = next(c for c in fake.calls if c.get("stream") is False)
+    warmup = fake.calls[-1]
+    assert design["repetition_penalty"] == 1.15
+    assert warmup["repetition_penalty"] == 1.15
+
+
+def test_repetition_penalty_defaults_on(monkeypatch, tmp_path):
+    _handler, fake = _make_handler(monkeypatch, tmp_path)
+    assert fake.calls[-1]["repetition_penalty"] == 1.2

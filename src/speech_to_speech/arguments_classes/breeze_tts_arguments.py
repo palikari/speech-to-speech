@@ -70,6 +70,12 @@ class BreezeTTSHandlerArguments:
         default=50,
         metadata={"help": "Top-k sampling cutoff. Default is 50."},
     )
+    breeze_tts_repetition_penalty: float = field(
+        default=1.2,
+        metadata={
+            "help": "Penalty on repeating a codec token within an utterance. 1.0 disables. Suppresses held sounds ('borrrr') and silence-instead-of-end-of-speech; measured 0/80 runaways at 1.2 vs 5/80 at 1.0. Default is 1.2."
+        },
+    )
     breeze_tts_seed: int = field(
         default=0,
         metadata={

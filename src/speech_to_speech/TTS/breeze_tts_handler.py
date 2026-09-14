@@ -49,6 +49,10 @@ DEFAULT_INSTRUCT = "A calm, clear adult voice with a natural conversational pace
 DEFAULT_CFG_SCALE = 4.0
 DEFAULT_STREAMING_INTERVAL = 0.4
 DEFAULT_MAX_TOKENS = 750
+# Discourages the model from repeating one codec token: the mechanism behind
+# both the held-sound ("borrrr") and silence-instead-of-end-of-speech failures.
+# Measured unseeded over 80 sentences: 5 runaways at 1.0, 2 at 1.1, 0 at 1.2.
+DEFAULT_REPETITION_PENALTY = 1.2
 PIPELINE_SR = 16000
 # Spoken once at startup to design the voice; its audio becomes the clone
 # reference and this text is the reference transcript.
@@ -105,6 +109,7 @@ class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
         max_tokens: int = DEFAULT_MAX_TOKENS,
         temperature: float = 0.9,
         top_k: int = 50,
+        repetition_penalty: float = DEFAULT_REPETITION_PENALTY,
         seed: int = 0,
         max_trailing_silence: float = DEFAULT_MAX_TRAILING_SILENCE,
         blocksize: int = 512,
@@ -133,6 +138,7 @@ class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
         self.max_tokens = int(max_tokens)
         self.temperature = float(temperature)
         self.top_k = int(top_k)
+        self.repetition_penalty = float(repetition_penalty)
         self.seed = int(seed)
         self.max_trailing_silence = float(max_trailing_silence)
         self.blocksize = int(blocksize)
@@ -223,6 +229,7 @@ class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
                     max_tokens=self._estimate_max_tokens(BOOTSTRAP_TEXT),
                     temperature=self.temperature,
                     top_k=self.top_k,
+                    repetition_penalty=self.repetition_penalty,
                     seed=seed,
                     stream=False,
                     split_pattern=None,
@@ -331,6 +338,7 @@ class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
             "max_tokens": self._estimate_max_tokens(text),
             "temperature": self.temperature,
             "top_k": self.top_k,
+            "repetition_penalty": self.repetition_penalty,
             "stream": True,
             "streaming_interval": self.streaming_interval,
             "split_pattern": None,
