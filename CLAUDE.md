@@ -117,7 +117,7 @@ _Update at the end of a session that changed something._
   model / Warming up the voice; 25 s fail-safe), and assistant bubbles now
   stay while speaker output is audible (client emits `output-level`; chat
   view bumps the bubble's expiry, fades 3 s after the last word). Assets are
-  cache-busted with `?v=audio-24k-v5` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
+  cache-busted with `?v=audio-24k-v6` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
   editing demo JS/CSS or browsers keep the old files.
 - 2026-09-14 (tools): the LLM handler now parses the model's native
   `<tool_call><function=…><parameter=…>` XML blocks as well as the prompted
@@ -130,6 +130,16 @@ _Update at the end of a session that changed something._
   the moment the user's turn ends (client status `processing`, outside
   warm-up) until the transcript fills it in; dropped on barge-in, cancel or a
   tool-only response (kept across a tool follow-up); 30 s fail-safe.
+- 2026-09-14 (personas): named voices. `voices/<name>.json` next to each clip
+  ({ref_audio, ref_text, direction?, cfg_scale?}) is loaded at startup from
+  `--breeze_tts_voice_dir` (defaults to the folder of `--breeze_tts_voice_path`);
+  a session selects one by sending its name as the Realtime `voice`;
+  `--breeze_tts_voice NAME` makes one the startup default. Current voices:
+  `assistant` (designed here) and `villain` (Michael's 41 s "mad scientist"
+  clip designed on the MacBook, seed 9; the clip is the voice, never re-roll).
+  The demo Settings has a Persona picker that sets the voice name and the
+  character prompt (`PERSONAS` in demo/main.js). Planned: sea captain, robot,
+  witch, once their clips are made.
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache

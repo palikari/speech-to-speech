@@ -38,6 +38,18 @@ class BreezeTTSHandlerArguments:
             "help": "Where to save the clip designed from breeze_tts_instruct. If the file already exists it is reused instead of designing again, so the assistant keeps the same voice across restarts. Unset uses a temporary file."
         },
     )
+    breeze_tts_voice_dir: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "Folder of named voices: each <name>.json holds ref_audio (relative path), ref_text and optionally direction and cfg_scale. A session may then select a voice by name. Defaults to the folder of breeze_tts_voice_path."
+        },
+    )
+    breeze_tts_voice: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "Name of the voice (from breeze_tts_voice_dir) to use by default. Unset uses the designed/reference voice."
+        },
+    )
     breeze_tts_cfg_scale: float = field(
         default=4.0,
         metadata={

@@ -17,15 +17,30 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v5";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v6";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v5";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v6";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
 // Qwen3-TTS speaker name or a Breeze voice description.
 const DEFAULT_VOICE = "";
 const DEFAULT_INSTRUCTIONS = "You are a friendly voice assistant.";
+
+/** Personas: a named server-side voice plus a character prompt. Picking one
+ *  fills the Voice and Instructions fields; both stay editable. */
+const PERSONAS = /** @type {Record<string, { voice: string; instructions: string }>} */ ({
+  assistant: { voice: "", instructions: DEFAULT_INSTRUCTIONS },
+  villain: {
+    voice: "villain",
+    instructions:
+      "You are a grand, old-fashioned theatrical villain: a mad scientist with a silky, "
+      + "sardonic delivery. Purr with mock politeness, savour your own wickedness, and slip into "
+      + "flamboyant indignation when crossed. Stay helpful underneath it all: answer the question, "
+      + "in character. You're having a casual spoken conversation, so reply in one to three short "
+      + "sentences, plain wording, no lists or headings. Always end sentences with a period.",
+  },
+});
 
 const STORAGE_KEYS = {
   // Direct s2s server URL, used only when the deploy has no LOAD_BALANCER_URL
@@ -268,6 +283,8 @@ const gateField = $("#gate-field");
 /** @type {HTMLSelectElement} */
 const inputVoice = $("#voice");
 /** @type {HTMLSelectElement} */
+const inputPersona = $("#persona");
+/** @type {HTMLSelectElement} */
 const inputAudioInput = $("#audio-input");
 /** @type {HTMLSelectElement} */
 const inputAudioOutput = $("#audio-output");
@@ -460,10 +477,25 @@ function setCaption(text, kind = "") {
   circleCaption.className = `circle-caption${kind ? ` ${kind}` : ""}${trimmed ? "" : " empty"}`;
 }
 
+/** Show the persona whose voice matches the current Voice field, else Assistant. */
+function syncPersonaSelect() {
+  const current = inputVoice.value.trim().toLowerCase();
+  const match = Object.entries(PERSONAS).find(([, p]) => p.voice.toLowerCase() === current);
+  inputPersona.value = match ? match[0] : "assistant";
+}
+
+inputPersona.addEventListener("change", () => {
+  const persona = PERSONAS[inputPersona.value];
+  if (!persona) return;
+  inputVoice.value = persona.voice;
+  inputInstructions.value = persona.instructions;
+});
+
 function openSettings() {
   syncConnectionUi();
   inputVoice.value = settings.voice;
   inputInstructions.value = settings.instructions;
+  syncPersonaSelect();
   syncGateUi();
   updateRestartAvailability();
   void refreshAudioDeviceLists();

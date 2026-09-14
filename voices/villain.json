@@ -1,0 +1,8 @@
+{
+  "description": "Grand theatrical villain: silky mid-Atlantic tenor-baritone, rolled Rs, purring mock politeness.",
+  "origin": "Voice design on the MacBook Pro (seed 9, 'grand old-fashioned theatrical villain' prompt, cfg 4). The clip is the voice; clone from it.",
+  "ref_audio": "villain.wav",
+  "ref_text": "(chuckle) Ah. So, you have come to bargain. How deliciously naive. Do sit down, do sit down, the chair will not bite. Not on the first visit. (sigh) You want your beloved back, your fortune restored, and, let me guess, a pony. And in return you offer me... a firm handshake, and your word? (laugh) Oh, that is rich. That is positively operatic! Very well. Sign here, here, and initial there, where it says everlasting torment. Merely a formality.",
+  "direction": null,
+  "cfg_scale": 4
+}

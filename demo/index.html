@@ -11,7 +11,7 @@
       rel="stylesheet"
     />
     <link rel="icon" type="image/svg+xml" href="favicon.svg?v=4" />
-    <link rel="stylesheet" href="style.css?v=audio-24k-v5" />
+    <link rel="stylesheet" href="style.css?v=audio-24k-v6" />
   </head>
   <!--
     `booting` disables transitions/animations until the first paint commits.
@@ -258,6 +258,15 @@
             </label>
 
             <label class="field">
+              <span>Persona</span>
+              <select id="persona">
+                <option value="assistant" selected>Assistant</option>
+                <option value="villain">Mad scientist</option>
+              </select>
+              <small>Sets the voice and the character prompt below. Edit either afterwards.</small>
+            </label>
+
+            <label class="field">
               <span>Voice</span>
               <input
                 id="voice"
@@ -417,6 +426,6 @@
     </dialog>
 
     <script src="vendor/openai-realtime-agents.umd.js"></script>
-    <script type="module" src="main.js?v=audio-24k-v5"></script>
+    <script type="module" src="main.js?v=audio-24k-v6"></script>
   </body>
 </html>

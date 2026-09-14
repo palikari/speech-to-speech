@@ -9,6 +9,7 @@ cloned for every utterance, so the voice does not drift between sentences.
 
 from __future__ import annotations
 
+import json
 import logging
 import math
 import re
@@ -104,6 +105,8 @@ class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
         ref_audio: Optional[str] = None,
         ref_text: Optional[str] = None,
         voice_path: Optional[str] = None,
+        voice_dir: Optional[str] = None,
+        voice: Optional[str] = None,
         cfg_scale: float = DEFAULT_CFG_SCALE,
         streaming_interval: float = DEFAULT_STREAMING_INTERVAL,
         max_tokens: int = DEFAULT_MAX_TOKENS,
@@ -133,6 +136,9 @@ class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
         self.ref_audio: Optional[str] = ref_audio
         self.ref_text: Optional[str] = ref_text
         self.voice_path = self._normalize_optional_path(voice_path)
+        self.voice_dir = self._normalize_optional_path(voice_dir)
+        self.default_voice = (voice or "").strip() or None
+        self._named_voices: dict[str, dict[str, Any]] = {}
         self.cfg_scale = float(cfg_scale)
         self.streaming_interval = float(streaming_interval)
         self.max_tokens = int(max_tokens)
@@ -151,9 +157,15 @@ class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
         self.sample_rate = int(getattr(self.model, "sample_rate", 24000))
         logger.info("Breeze TTS model loaded (sample rate %d)", self.sample_rate)
 
-        self._resolve_voice()
+        self._load_named_voices()
+        if self.default_voice:
+            self._apply_named_voice(self.default_voice)
+        else:
+            self._resolve_voice()
         self._initial_ref_audio = self.ref_audio
         self._initial_ref_text = self.ref_text
+        self._initial_direction = self.direction
+        self._initial_cfg_scale = self.cfg_scale
 
         logger.info(
             "Breeze TTS streaming %.2fs of audio per chunk%s",
@@ -189,6 +201,44 @@ class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
             if path.is_file():
                 return path.resolve()
         return None
+
+    def _load_named_voices(self) -> None:
+        """Read ``<voice_dir>/<name>.json`` files: {ref_audio, ref_text, direction?, cfg_scale?}."""
+        directory = self.voice_dir
+        if directory is None and self.voice_path is not None:
+            directory = self.voice_path.parent
+        if directory is None or not directory.is_dir():
+            return
+        for path in sorted(directory.glob("*.json")):
+            try:
+                spec = json.loads(path.read_text())
+                ref_audio = (directory / str(spec["ref_audio"])).resolve()
+                ref_text = str(spec["ref_text"]).strip()
+                if not ref_audio.is_file() or not ref_text:
+                    raise ValueError("ref_audio must exist and ref_text must be non-empty")
+            except Exception as exc:
+                logger.warning("Breeze TTS voice: skipping %s: %s", path.name, exc)
+                continue
+            self._named_voices[path.stem.lower()] = {
+                "ref_audio": str(ref_audio),
+                "ref_text": ref_text,
+                "direction": (spec.get("direction") or "").strip() or None,
+                "cfg_scale": spec.get("cfg_scale"),
+            }
+        if self._named_voices:
+            logger.info("Breeze TTS voices available by name: %s", ", ".join(sorted(self._named_voices)))
+
+    def _apply_named_voice(self, name: str) -> bool:
+        spec = self._named_voices.get(name.strip().lower())
+        if spec is None:
+            return False
+        self.ref_audio = spec["ref_audio"]
+        self.ref_text = spec["ref_text"]
+        self.direction = spec["direction"]
+        if spec["cfg_scale"] is not None:
+            self.cfg_scale = float(spec["cfg_scale"])
+        logger.info("Breeze TTS voice: %r (%s)", name, Path(spec["ref_audio"]).name)
+        return True
 
     def _resolve_voice(self) -> None:
         if self.ref_audio:
@@ -518,6 +568,9 @@ class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
         if not session_voice:
             return
 
+        if self._apply_named_voice(session_voice):
+            return
+
         if self._resolve_audio_path(session_voice) is not None:
             logger.warning(
                 "Ignoring Breeze-TTS session voice %r: cloning a clip needs its transcript; "
@@ -530,9 +583,10 @@ class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
         # per server process and clone it for the rest of the session.
         if len(session_voice.split()) < MIN_DESCRIPTION_WORDS:
             logger.warning(
-                "Ignoring Breeze-TTS session voice %r: Breeze has no named speakers; "
+                "Ignoring Breeze-TTS session voice %r: not a known voice name (%s); "
                 "pass a voice description of at least %d words to design one.",
                 session_voice,
+                ", ".join(sorted(self._named_voices)) or "none configured",
                 MIN_DESCRIPTION_WORDS,
             )
             return
@@ -550,6 +604,8 @@ class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
     def on_session_end(self) -> None:
         self.ref_audio = self._initial_ref_audio
         self.ref_text = self._initial_ref_text
+        self.direction = self._initial_direction
+        self.cfg_scale = self._initial_cfg_scale
         logger.debug("Breeze-TTS session state reset")
 
     def _coalesce_pending_tts_input(self, current_input: TTSInput) -> tuple[str, Optional[str]]:

@@ -1,0 +1,5 @@
+{
+  "description": "The default assistant voice, designed at first start from the default description (seed 0).",
+  "ref_audio": "assistant.wav",
+  "ref_text": "Hello, I'm the voice of this assistant. I'll keep my answers short and clear, and I'm happy to go into more detail whenever you ask."
+}

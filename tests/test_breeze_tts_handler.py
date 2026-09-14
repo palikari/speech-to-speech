@@ -341,3 +341,41 @@ def test_repetition_penalty_applies_to_utterances_and_design(monkeypatch, tmp_pa
 def test_repetition_penalty_defaults_on(monkeypatch, tmp_path):
     _handler, fake = _make_handler(monkeypatch, tmp_path)
     assert fake.calls[-1]["repetition_penalty"] == 1.2
+
+
+def _voice_dir(tmp_path):
+    d = tmp_path / "voices"
+    d.mkdir()
+    sf.write(str(d / "villain.wav"), np.zeros(24000 * 2, dtype=np.float32), 24000, subtype="PCM_16")
+    (d / "villain.json").write_text(
+        '{"ref_audio": "villain.wav", "ref_text": "Ah. So you have come to bargain.", "direction": "Purring.", "cfg_scale": 3}'
+    )
+    (d / "broken.json").write_text('{"ref_audio": "missing.wav", "ref_text": "x"}')
+    return d
+
+
+def test_named_voice_registry_loads_and_session_can_select_it(monkeypatch, tmp_path):
+    d = _voice_dir(tmp_path)
+    handler, fake = _make_handler(monkeypatch, tmp_path, voice_dir=str(d))
+    assert set(handler._named_voices) == {"villain"}
+
+    runtime = SimpleNamespace(session=SimpleNamespace(audio=SimpleNamespace(output=SimpleNamespace(voice="Villain"))))
+    calls_before = len(fake.calls)
+    handler._apply_session_voice_override(runtime, None)
+
+    assert len(fake.calls) == calls_before  # no design pass: it is a clone
+    assert handler.ref_audio == str(d / "villain.wav")
+    assert handler.ref_text == "Ah. So you have come to bargain."
+    assert handler.direction == "Purring." and handler.cfg_scale == 3.0
+    list(handler._generate("Hello."))
+    assert fake.calls[-1]["ref_audio"] == str(d / "villain.wav") and fake.calls[-1]["instruct"] == "Purring."
+
+    handler.on_session_end()
+    assert handler.ref_audio == str(tmp_path / "voice.wav") and handler.direction is None
+
+
+def test_default_named_voice_at_startup(monkeypatch, tmp_path):
+    d = _voice_dir(tmp_path)
+    handler, fake = _make_handler(monkeypatch, tmp_path, voice_dir=str(d), voice="villain")
+    assert handler.ref_audio == str(d / "villain.wav")
+    assert all(c.get("stream") is not False for c in fake.calls)  # never designed a clip
