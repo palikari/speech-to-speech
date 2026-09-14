@@ -54,6 +54,8 @@ const MIC_CHUNK_MS = 40;
 const CAPTURE_CONFIG_TIMEOUT_MS = 2_000;
 const SPEAKING_OPEN_DB = -50;
 const SPEAKING_HANG_MS = 250;
+// How often the websocket transport reports speaker output level (ms).
+const OUTPUT_LEVEL_POLL_MS = 100;
 
 /** @param {string} name @param {URL} base */
 export function versionedAudioWorkletUrl(name, base) {
@@ -346,6 +348,9 @@ export class S2sRealtimeClient extends EventTarget {
       this._outAnalyser = output;
       this._visualiser = new OrbVisualiser(micAnalyser, output, () => this._aiSpeaking);
       this._visualiser.start();
+      // Report what is actually leaving the speakers (not what was queued), so
+      // the UI can hold transcript bubbles until the words are really spoken.
+      this._levelTimer = window.setInterval(() => this._emitOutputLevel(), OUTPUT_LEVEL_POLL_MS);
     }
     await this.setAudioOutputDevice(this.options.audioOutputId || "");
   }
@@ -375,6 +380,7 @@ export class S2sRealtimeClient extends EventTarget {
     const input = this._rms(this._micAnalyser);
     this.dispatchEvent(new CustomEvent("input-level", { detail: { rms: input } }));
     const output = this._rms(this._outAnalyser);
+    this._dispatchOutputLevel(output);
     const now = performance.now();
     if (output > Math.pow(10, SPEAKING_OPEN_DB / 20)) {
       this._lastAudibleAt = now;
@@ -384,6 +390,16 @@ export class S2sRealtimeClient extends EventTarget {
     } else if (this._aiSpeaking && now - this._lastAudibleAt > SPEAKING_HANG_MS) {
       this._aiSpeaking = false;
     }
+  }
+
+  _emitOutputLevel() {
+    this._dispatchOutputLevel(this._rms(this._outAnalyser));
+  }
+
+  /** @param {number} rms */
+  _dispatchOutputLevel(rms) {
+    const audible = rms > Math.pow(10, SPEAKING_OPEN_DB / 20);
+    this.dispatchEvent(new CustomEvent("output-level", { detail: { rms, audible } }));
   }
 
   /** @param {AnalyserNode | null} analyser */

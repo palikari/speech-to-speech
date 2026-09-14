@@ -782,6 +782,7 @@ a:hover {
 .state-authenticated .ind-mic,
 .state-ready .ind-mic,
 .state-connecting .ind-spinner,
+.state-warming .ind-spinner,
 .state-connected .ind-spinner,
 .state-auto-selecting .ind-spinner,
 .state-starting .ind-spinner,
@@ -2718,4 +2719,24 @@ body.cam-on .footer {
   .stage { padding: 8px 14px 10px; gap: 8px; }
   .footer { display: none; }
   .circle { width: clamp(120px, min(50vw, 46vh), 240px); }
+}
+
+
+/* Warm-up: the session is live but the assistant hasn't spoken yet. A slow
+ * breathing ring + the spinner reads as "starting up", distinct from the
+ * thinking dots used mid-conversation. */
+.state-warming .circle-ring-outer {
+  opacity: 0.5;
+  animation: warm-breathe 2.2s ease-in-out infinite;
+}
+.state-warming .circle-glow {
+  animation: warm-glow 2.2s ease-in-out infinite;
+}
+@keyframes warm-breathe {
+  0%, 100% { transform: translate(-50%, -50%) scale(0.96); opacity: 0.25; }
+  50%      { transform: translate(-50%, -50%) scale(1.08); opacity: 0.6; }
+}
+@keyframes warm-glow {
+  0%, 100% { opacity: 0.4; }
+  50%      { opacity: 0.75; }
 }

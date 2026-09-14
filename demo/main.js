@@ -13,13 +13,13 @@
  * proxy forwards exclusively to SPEECH_TO_SPEECH_URL); LB mode and user-typed
  * URLs stay on WebSocket.
  *
- * @typedef {"idle" | "connecting" | "queued" | "your-turn" | "listening" | "user-speaking" | "processing" | "ai-speaking" | "error"} AppState
+ * @typedef {"idle" | "connecting" | "queued" | "your-turn" | "warming" | "listening" | "user-speaking" | "processing" | "ai-speaking" | "error"} AppState
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v1";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=warmup-1";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js";
+import { ChatView } from "./ui/chat.js?v=warmup-1";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -172,6 +172,7 @@ const STATE_VIEWS = {
   connecting:      { caption: "Connecting",    disabled: true  },
   queued:          { caption: "Finding you a spot…", disabled: true },
   "your-turn":     { caption: "You're up! 🎉", disabled: true  },
+  warming:         { caption: "Getting ready…", disabled: false },
   listening:       { caption: "",              disabled: false },
   "user-speaking": { caption: "",              disabled: false },
   processing:      { caption: "",              disabled: false },
@@ -185,6 +186,7 @@ const STATE_CLASS = {
   connecting: "state-connecting",
   queued: "state-queued",
   "your-turn": "state-your-turn",
+  warming: "state-warming",
   listening: "state-listening",
   "user-speaking": "state-user-speaking",
   processing: "state-processing",
@@ -193,7 +195,7 @@ const STATE_CLASS = {
 };
 
 /** @type {ReadonlySet<AppState>} */
-const LIVE_STATES = new Set(["listening", "user-speaking", "processing", "ai-speaking"]);
+const LIVE_STATES = new Set(["warming", "listening", "user-speaking", "processing", "ai-speaking"]);
 
 /** @type {HTMLButtonElement} */
 const circleBtn = $("#main-circle");
@@ -426,6 +428,9 @@ function setState(next) {
     circleSubcaption.textContent =
       "Sorry, we overhugged! 🤗 Every slot is busy, so we saved you a spot. Hang tight, you're moving up.";
     circleSubcaption.hidden = false;
+  } else if (next === "warming") {
+    circleSubcaption.textContent = warmupStep;
+    circleSubcaption.hidden = !warmupStep;
   } else {
     circleSubcaption.hidden = true;
   }
@@ -1385,6 +1390,7 @@ async function doStart(audioContext = null) {
   chat.reset();
   setState("connecting");
   setCaption("Asking for mic…", "muted");
+  beginWarmup();
 
   // Create + resume the AudioContext SYNCHRONOUSLY, still inside the gesture.
   // iOS Safari only starts an AudioContext from a user gesture; if we waited
@@ -1463,7 +1469,14 @@ async function doStart(audioContext = null) {
   });
   c.addEventListener("transcript", (e) => {
     const d = /** @type {CustomEvent<{ role: "user" | "assistant"; text: string; partial: boolean; itemId?: string; responseId?: string }>} */ (e).detail;
+    if (warmingUp && d.role === "assistant") setWarmupStep("Warming up the voice…");
     chat.onTranscript(d);
+  });
+  c.addEventListener("output-level", (e) => {
+    const { audible } = /** @type {CustomEvent<{ rms: number; audible: boolean }>} */ (e).detail;
+    if (!audible) return;
+    if (warmingUp) endWarmup("first-audio");
+    chat.onAssistantAudible();
   });
   c.addEventListener("user-turn-started", (e) => {
     const detail = /** @type {CustomEvent<{ itemId?: string }>} */ (e).detail;
@@ -1600,8 +1613,79 @@ function endQueueTicket() {
   queuedTicketId = "";
 }
 
+// ── Warm-up phase ────────────────────────────────────────────────────────────
+// From the tap until the assistant's first audible words the session is
+// technically live, but the user is really waiting for the model to wake up
+// and the voice to start. Show that as one explicit "Getting ready…" state
+// (with the step we're on) instead of the generic thinking dots.
+let warmingUp = false;
+/** @type {string} */
+let warmupStep = "";
+/** @type {string} */
+let lastClientStatus = "";
+let warmupTimeout = 0;
+const WARMUP_MAX_MS = 25000;
+
+function beginWarmup() {
+  warmingUp = true;
+  setWarmupStep("Connecting…");
+  clearTimeout(warmupTimeout);
+  warmupTimeout = window.setTimeout(() => endWarmup("timeout"), WARMUP_MAX_MS);
+}
+
+/** @param {string} step */
+function setWarmupStep(step) {
+  warmupStep = step;
+  if (currentState === "warming") {
+    circleSubcaption.textContent = step;
+    circleSubcaption.hidden = !step;
+  }
+}
+
+/** @param {"first-audio" | "no-greeting" | "user-spoke" | "timeout" | "abort"} reason */
+function endWarmup(reason) {
+  if (!warmingUp) return;
+  warmingUp = false;
+  warmupStep = "";
+  clearTimeout(warmupTimeout);
+  warmupTimeout = 0;
+  if (reason === "abort") return;
+  // Re-render the state we would have shown had we not been warming up.
+  if (reason === "first-audio") setState("ai-speaking");
+  else if (lastClientStatus) onClientStatus(lastClientStatus);
+  if (reason === "no-greeting") setCaption("Ready. Say something.", "muted");
+}
+
 /** @param {string} status */
 function onClientStatus(status) {
+  lastClientStatus = status;
+  if (warmingUp) {
+    switch (status) {
+      case "connected":
+        if (!startupGreeting) { endWarmup("no-greeting"); return; }
+        setWarmupStep("Waking the model…");
+        setState("warming");
+        return;
+      case "processing":
+        if (warmupStep === "Connecting…") setWarmupStep("Waking the model…");
+        setState("warming");
+        return;
+      case "ai-speaking":
+        // The server started sending audio; the first audible sample ends warm-up.
+        setWarmupStep("Warming up the voice…");
+        setState("warming");
+        return;
+      case "user-speaking":
+        endWarmup("user-spoke");
+        break; // fall through to the normal handling below
+      case "closed":
+      case "error":
+        endWarmup("abort");
+        break;
+      default:
+        break;
+    }
+  }
   switch (status) {
     case "creating-session":
     case "connecting":
@@ -1635,6 +1719,7 @@ function onClientStatus(status) {
 }
 
 async function teardown() {
+  endWarmup("abort");
   stopHeartbeat();
   stopJoinCountdown();
   endTrackedSession();
@@ -1664,6 +1749,7 @@ async function teardown() {
 
 /** @param {unknown} err */
 async function onFatalError(err) {
+  endWarmup("abort");
   console.error("[main] fatal:", err);
   const message = err instanceof Error ? err.message : String(err);
   try {

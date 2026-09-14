@@ -112,6 +112,13 @@ _Update at the end of a session that changed something._
   Default is now 1.2 (`--breeze_tts_repetition_penalty`); per-sentence
   synthesis keeps the penalised history short. Live: 12/12 complete
   including one-word answers, 0 guard firings.
+- 2026-09-14 (demo UI): "Getting ready…" warm-up state on the orb from the
+  tap until the first audible assistant word (steps: Connecting / Waking the
+  model / Warming up the voice; 25 s fail-safe), and assistant bubbles now
+  stay while speaker output is audible (client emits `output-level`; chat
+  view bumps the bubble's expiry, fades 3 s after the last word). Assets are
+  cache-busted with `?v=warmup-1` in index.html/main.js; bump it when
+  editing demo JS/CSS or browsers keep the old files.
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache
