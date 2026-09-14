@@ -314,9 +314,9 @@ def check_mac_settings(module_kwargs: ModuleArguments) -> None:
             logger.warning(
                 "For macOS users, it is recommended to use mlx-lm. You can activate it by passing --llm_backend mlx-lm."
             )
-        if module_kwargs.tts not in ("pocket", "kokoro", "omnivoice", "qwen3"):
+        if module_kwargs.tts not in ("pocket", "kokoro", "omnivoice", "qwen3", "breeze"):
             logger.warning(
-                "For macOS users, it is recommended to use qwen3 for TTS "
+                "For macOS users, it is recommended to use qwen3 or breeze for TTS "
                 "(pocket, kokoro, and omnivoice are also valid options)."
             )
 

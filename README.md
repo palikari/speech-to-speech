@@ -314,6 +314,29 @@ The preset supplies these as defaults only: explicit `--device`, component-devic
 
 `--tts pocket`, `--tts kokoro`, and `--tts omnivoice` are also valid on macOS.
 
+#### Breeze TTS 2 on macOS (this fork)
+
+`--tts breeze` runs [Breeze TTS 2](https://huggingface.co/BreezeBlue/Breeze-TTS-2) through the
+[palikari/mlx-audio](https://github.com/palikari/mlx-audio) fork, which carries a 4-9x inference
+speed-up (about 0.5x real time in bf16 on M-series). Weights and generated audio are
+research / non-commercial only.
+
+```bash
+speech-to-speech serve \
+    --stt parakeet-tdt \
+    --llm_backend mlx-lm --model_name mlx-community/Qwen3.8-27B-8bit \
+    --tts breeze \
+    --breeze_tts_instruct "A calm, clear adult voice with a natural conversational pace." \
+    --breeze_tts_voice_path voices/assistant.wav
+```
+
+With no reference clip, one clip is designed from `--breeze_tts_instruct` at startup (fixed seed)
+and cloned for every utterance, so the voice stays consistent. `--breeze_tts_voice_path` saves
+that clip and reuses it on later starts. To clone your own voice pass `--breeze_tts_ref_audio` with
+its exact transcript in `--breeze_tts_ref_text`; `--breeze_tts_direction "Speak slowly."` adds a
+delivery instruction on top of either voice. `--breeze_tts_streaming_interval` (default 0.4 s)
+trades time-to-first-audio against per-chunk overhead.
+
 To compare the MLX quantization variants locally:
 
 ```bash

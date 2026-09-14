@@ -9,6 +9,7 @@ from queue import Queue
 from threading import Event
 from typing import Any, Literal
 
+from speech_to_speech.arguments_classes.breeze_tts_arguments import BreezeTTSHandlerArguments
 from speech_to_speech.arguments_classes.chat_completions_language_model_arguments import (
     ChatCompletionsLanguageModelHandlerArguments,
 )
@@ -493,6 +494,18 @@ LLM_BACKENDS = build_backend_registry(
 TTS_BACKENDS = build_backend_registry(
     "tts",
     [
+        BackendSpec(
+            "breeze",
+            "tts",
+            BreezeTTSHandlerArguments,
+            _simple_handler_factory(
+                "speech_to_speech.TTS.breeze_tts_handler",
+                "BreezeTTSHandler",
+                setup_should_listen=True,
+                context_kwargs=True,
+            ),
+            config_prefix="breeze_tts",
+        ),
         BackendSpec(
             "chatTTS",
             "tts",
