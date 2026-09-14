@@ -58,7 +58,9 @@ dependencies = [
     "lingua-language-detector>=2.0.2",
     "miniaudio==1.61; platform_system == 'Darwin'",
     "mlx==0.32.0; platform_system == 'Darwin'",
-    "mlx-audio==0.4.7; platform_system == 'Darwin'",
+    # Version comes from the git source in [tool.uv.sources] (palikari fork,
+    # breeze-speedups branch) until the Breeze speed-ups land in a PyPI release.
+    "mlx-audio; platform_system == 'Darwin'",
     "mlx-lm==0.31.3; platform_system == 'Darwin'",
     "mlx-metal==0.32.0; platform_system == 'Darwin'",
     "misaki>=0.9.4; platform_system == 'Darwin'",
@@ -111,6 +113,13 @@ Issues = "https://github.com/huggingface/speech-to-speech/issues"
 speech-to-speech = "speech_to_speech.cli:main"
 
 [dependency-groups]
+# Browser demo server (demo/server.py); mirrors demo/requirements.txt.
+demo = [
+    "fastapi>=0.115.6",
+    "uvicorn[standard]>=0.34.0",
+    "httpx>=0.28.1",
+    "huggingface_hub[oauth]>=1.0",
+]
 dev = [
     "ruff",
     "mypy",
@@ -125,6 +134,9 @@ asyncio_mode = "auto"
 [tool.uv]
 package = true
 prerelease = "allow"
+
+[tool.uv.sources]
+mlx-audio = { git = "https://github.com/palikari/mlx-audio.git", branch = "breeze-speedups" }
 
 [tool.setuptools.packages.find]
 where = ["src"]

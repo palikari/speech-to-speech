@@ -228,7 +228,7 @@ dmypy.json
 .coverage
 cover/
 .tox/
-uv.lock
+# uv.lock is committed in this fork so both machines resolve the same mlx-audio commit
 
 # JavaScript dependencies
 node_modules/
