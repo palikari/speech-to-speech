@@ -379,3 +379,45 @@ def test_default_named_voice_at_startup(monkeypatch, tmp_path):
     handler, fake = _make_handler(monkeypatch, tmp_path, voice_dir=str(d), voice="villain")
     assert handler.ref_audio == str(d / "villain.wav")
     assert all(c.get("stream") is not False for c in fake.calls)  # never designed a clip
+
+
+def _tone(seconds, hz=220.0, sr=24000):
+    t = np.arange(int(sr * seconds)) / sr
+    return (0.3 * np.sin(2 * np.pi * hz * t)).astype(np.float32)
+
+
+def _speechlike(seconds, sr=24000):
+    # a chirp: spectrum changes every window, like real speech
+    t = np.arange(int(sr * seconds)) / sr
+    return (0.3 * np.sin(2 * np.pi * (120 + 900 * (t % 0.5)) * t)).astype(np.float32)
+
+
+def test_stream_cuts_a_held_sound(monkeypatch, tmp_path, caplog):
+    handler, _fake = _make_handler(monkeypatch, tmp_path, blocksize=512, max_held_sound=0.8)
+    pulled = []
+
+    def chunks():
+        items = [SimpleNamespace(audio=_speechlike(0.8), sample_rate=24000)]
+        items += [SimpleNamespace(audio=_tone(0.4), sample_rate=24000)] * 20  # 8 s of one frozen vowel
+        for i, item in enumerate(items):
+            pulled.append(i)
+            yield item
+
+    with caplog.at_level(logging.INFO, logger="speech_to_speech.TTS.breeze_tts_handler"):
+        blocks = list(handler._stream(chunks(), label="test"))
+
+    seconds = sum(len(b) for b in blocks) / PIPELINE_SR
+    assert 0.8 <= seconds <= 2.2  # speech + at most ~a second of the held sound
+    assert len(pulled) < 8
+    assert "stopped on a held sound of 0.8s" in caplog.text
+
+
+def test_stream_leaves_changing_speech_alone(monkeypatch, tmp_path, caplog):
+    handler, _fake = _make_handler(monkeypatch, tmp_path, blocksize=512, max_held_sound=0.8)
+    items = [SimpleNamespace(audio=_speechlike(0.4), sample_rate=24000) for _ in range(10)]
+
+    with caplog.at_level(logging.INFO, logger="speech_to_speech.TTS.breeze_tts_handler"):
+        blocks = list(handler._stream(iter(items), label="test"))
+
+    assert sum(len(b) for b in blocks) / PIPELINE_SR >= 3.9
+    assert "held sound" not in caplog.text

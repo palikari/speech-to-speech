@@ -82,6 +82,12 @@ class BreezeTTSHandlerArguments:
         default=50,
         metadata={"help": "Top-k sampling cutoff. Default is 50."},
     )
+    breeze_tts_max_held_sound: float = field(
+        default=0.8,
+        metadata={
+            "help": "Stop a sentence when one sound is held with a frozen spectrum for this many seconds (the model stuck on a codec frame, heard as a stretched vowel). 0 disables. Default is 0.8."
+        },
+    )
     breeze_tts_repetition_penalty: float = field(
         default=1.2,
         metadata={

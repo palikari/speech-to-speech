@@ -98,6 +98,9 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+THINK_START = "<think>"
+THINK_END = "</think>"
+
 
 @runtime_checkable
 class _Tokenizer(Protocol):
@@ -148,6 +151,10 @@ class StreamContext(BaseModel):
     block_regex: Optional[str] = None
     enter_code: Optional[str] = None
     end_code: Optional[str] = None
+    # Reasoning-block filter: models may open a <think> block even with
+    # thinking disabled in the chat template; nothing inside it is spoken.
+    in_think: bool = False
+    think_pending: str = ""
     input_tokens: int = 0
     sentence_batch: list[str] = Field(default_factory=list)
     turn_id: str | None = None
@@ -333,6 +340,53 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
                 (printable_text.index(NATIVE_TOOL_CALL_ENTER), NATIVE_TOOL_CALL_ENTER, NATIVE_TOOL_CALL_END, True)
             )
         return min(candidates, key=lambda c: c[0]) if candidates else None
+
+    @staticmethod
+    def _strip_think(ctx: "StreamContext", raw_text: str, *, final: bool = False) -> str:
+        """Drop ``<think>…</think>`` spans from streamed text, across token boundaries.
+
+        Text that could be the start of a tag is held back until the next token
+        settles it; ``final`` flushes whatever is still held (an unclosed think
+        block is dropped entirely).
+        """
+        text = ctx.think_pending + raw_text
+        ctx.think_pending = ""
+        out = ""
+        while text:
+            if ctx.in_think:
+                end = text.find(THINK_END)
+                if end < 0:
+                    keep = 0
+                    for n in range(min(len(THINK_END) - 1, len(text)), 0, -1):
+                        if text.endswith(THINK_END[:n]):
+                            keep = n
+                            break
+                    ctx.think_pending = text[-keep:] if keep else ""
+                    text = ""
+                    break
+                ctx.in_think = False
+                text = text[end + len(THINK_END) :].lstrip()
+                continue
+            start = text.find(THINK_START)
+            if start >= 0:
+                out += text[:start]
+                ctx.in_think = True
+                text = text[start + len(THINK_START) :]
+                continue
+            keep = 0
+            for n in range(min(len(THINK_START) - 1, len(text)), 0, -1):
+                if text.endswith(THINK_START[:n]):
+                    keep = n
+                    break
+            if keep:
+                ctx.think_pending = text[-keep:]
+                text = text[:-keep]
+            out += text
+            text = ""
+        if final and ctx.think_pending and not ctx.in_think:
+            out += ctx.think_pending
+            ctx.think_pending = ""
+        return out
 
     def _process_printable_text(
         self,
@@ -557,6 +611,9 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
 
             raw_text: str = token.text if hasattr(token, "text") else token
             ctx.raw_generated_text += raw_text
+            raw_text = self._strip_think(ctx, raw_text)
+            if not raw_text:
+                continue
             clean = raw_text if not wants_audio else remove_unspeechable(raw_text)
             ctx.generated_text += clean
             ctx.printable_text += clean
@@ -573,6 +630,12 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
                 logger.info("LLM generation cancelled (stale speculative turn)")
                 break
             yield from chunks
+
+        tail = self._strip_think(ctx, "", final=True)
+        if tail:
+            clean = tail if not wants_audio else remove_unspeechable(tail)
+            ctx.generated_text += clean
+            ctx.printable_text += clean
 
         if ctx.sentence_batch and not ctx.interrupted:
             if ctx.printable_text.strip():

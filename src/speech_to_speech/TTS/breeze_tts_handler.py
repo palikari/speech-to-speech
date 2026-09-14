@@ -72,6 +72,12 @@ BASE_UTTERANCE_SECONDS = 2.0
 UTTERANCE_SAFETY_MARGIN = 1.6
 MIN_UTTERANCE_FRAMES = 60  # ~5 s
 DEFAULT_MAX_TRAILING_SILENCE = 1.2
+# Held-sound guard: a vowel stretched with an essentially frozen spectrum for
+# this long never occurs in speech; it is the model stuck on one codec frame.
+DEFAULT_MAX_HELD_SOUND = 0.8
+HELD_WINDOW_SECONDS = 0.05
+HELD_SIMILARITY = 0.985
+HELD_KEEP_SECONDS = 0.15
 # Sentence boundaries (Latin and CJK terminators) and line breaks. Each sentence
 # is generated as its own utterance: pauses between sentences are then never
 # mistaken for a runaway, and a runaway loses at most one sentence.
@@ -115,6 +121,7 @@ class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
         repetition_penalty: float = DEFAULT_REPETITION_PENALTY,
         seed: int = 0,
         max_trailing_silence: float = DEFAULT_MAX_TRAILING_SILENCE,
+        max_held_sound: float = DEFAULT_MAX_HELD_SOUND,
         blocksize: int = 512,
         gen_kwargs: dict[str, Any] | None = None,
         cancel_scope: CancelScope | None = None,
@@ -147,6 +154,7 @@ class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
         self.repetition_penalty = float(repetition_penalty)
         self.seed = int(seed)
         self.max_trailing_silence = float(max_trailing_silence)
+        self.max_held_sound = float(max_held_sound)
         self.blocksize = int(blocksize)
         self.gen_kwargs = gen_kwargs or {}
         self._temp_files: set[str] = set()
@@ -459,6 +467,39 @@ class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
     def _to_int16(self, audio: np.ndarray) -> np.ndarray:
         return np.clip(audio * 32768, -32768, 32767).astype(np.int16)
 
+    @staticmethod
+    def _held_sound_cut(chunk: np.ndarray, state: dict[str, Any], limit_windows: int) -> int | None:
+        """Return the sample index at which to cut *chunk* if a held sound is detected.
+
+        Walks 50 ms windows; a loud window whose normalized magnitude spectrum
+        is nearly identical to the previous one extends the run. Once the run
+        reaches *limit_windows*, cut just after the run's first window (kept
+        for a natural release) — or at the chunk start if the run began in an
+        earlier chunk. ``state`` carries the run and previous spectrum across chunks.
+        """
+        win = int(PIPELINE_SR * HELD_WINDOW_SECONDS)
+        n = len(chunk) // win
+        if n == 0:
+            return None
+        x = chunk[: n * win].astype(np.float32).reshape(n, win) / 32768.0
+        loud = x.std(axis=1) > 0.01
+        spec = np.abs(np.fft.rfft(x * np.hanning(win), axis=1))
+        spec /= np.linalg.norm(spec, axis=1, keepdims=True) + 1e-9
+        run: int = state["run"]
+        prev = state["prev"]
+        for i in range(n):
+            similar = prev is not None and loud[i] and float(np.dot(spec[i], prev)) > HELD_SIMILARITY
+            run = run + 1 if similar else 0
+            prev = spec[i]
+            if run >= limit_windows:
+                start_window = i - run + 1
+                state["run"], state["prev"] = 0, None
+                if start_window < 0:
+                    return 0
+                return min(len(chunk), start_window * win + int(PIPELINE_SR * HELD_KEEP_SECONDS))
+        state["run"], state["prev"] = run, prev
+        return None
+
     def _stream(self, gen: Any, label: str) -> Iterator[np.ndarray]:
         """Common streaming loop: log TTFA and RTF, yield int16 blocks at PIPELINE_SR."""
         cancel_gen = self.cancel_scope.generation if self.cancel_scope else None
@@ -470,6 +511,11 @@ class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
         trailing_silence = 0
         max_trailing = int(PIPELINE_SR * max(0.0, getattr(self, "max_trailing_silence", DEFAULT_MAX_TRAILING_SILENCE)))
         stopped_on_silence = False
+        held_windows_limit = int(
+            round(max(0.0, getattr(self, "max_held_sound", DEFAULT_MAX_HELD_SOUND)) / HELD_WINDOW_SECONDS)
+        )
+        held_state: dict[str, Any] = {"run": 0, "prev": None}
+        stopped_on_held = False
 
         for item in gen:
             if cancel_gen is not None and self.cancel_scope is not None and self.cancel_scope.is_stale(cancel_gen):
@@ -520,6 +566,12 @@ class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
                     audio_chunk = audio_chunk[: max(0, keep)]
                     stopped_on_silence = True
 
+            if held_windows_limit > 0 and not stopped_on_silence:
+                cut_at = self._held_sound_cut(audio_chunk, held_state, held_windows_limit)
+                if cut_at is not None:
+                    audio_chunk = audio_chunk[:cut_at]
+                    stopped_on_held = True
+
             audio_chunk = np.concatenate([leftover, audio_chunk])
             n = (len(audio_chunk) // self.blocksize) * self.blocksize
             for i in range(0, n, self.blocksize):
@@ -527,12 +579,19 @@ class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
                 total_samples += self.blocksize
             leftover = audio_chunk[n:]
 
-            if stopped_on_silence:
-                logger.info(
-                    "Breeze-TTS stopped after %.1fs of trailing silence (%s)",
-                    max_trailing / PIPELINE_SR,
-                    label,
-                )
+            if stopped_on_silence or stopped_on_held:
+                if stopped_on_silence:
+                    logger.info(
+                        "Breeze-TTS stopped after %.1fs of trailing silence (%s)",
+                        max_trailing / PIPELINE_SR,
+                        label,
+                    )
+                else:
+                    logger.info(
+                        "Breeze-TTS stopped on a held sound of %.1fs (%s)",
+                        held_windows_limit * HELD_WINDOW_SECONDS,
+                        label,
+                    )
                 close = getattr(gen, "close", None)
                 if callable(close):
                     close()

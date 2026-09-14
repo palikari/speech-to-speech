@@ -607,3 +607,29 @@ def test_text_only_stream_withholds_native_marker_prefix():
 
     assert [chunk.text for chunk in chunks] == ["Sure "]
     assert remaining == "<tool_ca"
+
+
+def _feed_think(tokens, final=True):
+    handler = object.__new__(LanguageModelHandler)
+    ctx = StreamContext()
+    out = "".join(handler._strip_think(ctx, t) for t in tokens)
+    if final:
+        out += handler._strip_think(ctx, "", final=True)
+    return out, ctx
+
+
+def test_think_block_is_dropped_even_when_split_across_tokens():
+    out, ctx = _feed_think(["<thi", "nk>\nThe user wants", " a joke.\n</thi", "nk>\n\nAye, ", "matey."])
+    assert out == "Aye, matey."
+    assert ctx.in_think is False and ctx.think_pending == ""
+
+
+def test_text_without_think_passes_through_verbatim():
+    out, _ctx = _feed_think(["Hello ", "there, ", "friend<", "3."])
+    assert out == "Hello there, friend<3."
+
+
+def test_unclosed_think_block_is_swallowed():
+    out, ctx = _feed_think(["<think>", "still thinking", " forever"])
+    assert out == ""
+    assert ctx.in_think is True

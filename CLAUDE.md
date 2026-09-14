@@ -143,6 +143,12 @@ _Update at the end of a session that changed something._
   The demo Settings has a Persona picker that sets the voice name and the
   character prompt (`PERSONAS` in demo/main.js). Planned: witch, once its clip is picked (recipe: design 5 seeds of a 60-word script in the lab,
   STT-check completeness, send takes, install the pick as voices/<name>.{wav,json}).
+- 2026-09-14 (browser bugs): (1) a captain reply arrived wrapped in
+  `<think>…</think>` despite enable_thinking=False; the LLM handler now strips
+  think spans while streaming (`_strip_think`, token-boundary safe). (2) the
+  witch held a vowel for the rest of a sentence; the silence guard cannot see
+  a loud stuck frame, so `_stream` now has a held-sound guard (frozen
+  spectrum for 0.8 s -> cut, `--breeze_tts_max_held_sound`).
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache
