@@ -49,7 +49,7 @@ import { OrbVisualiser, VIS_FFT_SIZE } from "./ws/orb-visualizer.js";
 import { SentAudioRecorder } from "./ws/user-audio-recorder.js";
 
 export const AUDIO_SAMPLE_RATE = 24_000;
-export const AUDIO_WORKLET_VERSION = "audio-24k-v10";
+export const AUDIO_WORKLET_VERSION = "audio-24k-v12";
 const MIC_CHUNK_MS = 40;
 const CAPTURE_CONFIG_TIMEOUT_MS = 2_000;
 const SPEAKING_OPEN_DB = -50;
@@ -606,8 +606,8 @@ export class S2sRealtimeClient extends EventTarget {
 
   /** @param {{voice?: string, instructions?: string}} patch */
   updateSession(patch) {
-    if (patch.voice) this.options.voice = patch.voice;
-    if (patch.instructions) this.options.instructions = patch.instructions;
+    if (patch.voice !== undefined) this.options.voice = patch.voice;
+    if (patch.instructions !== undefined) this.options.instructions = patch.instructions;
     if (!this._session) return;
     this._agent = this._buildAgent();
     void this._session.updateAgent(this._agent);

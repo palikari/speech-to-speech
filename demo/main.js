@@ -17,9 +17,9 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v10";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v12";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v10";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v12";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -35,46 +35,70 @@ const VOCAL_CUES =
   + " the moment. Most replies should have none; use one in perhaps every third or"
   + " fourth reply, never more than one, and never any other stage direction.";
 
+/** Every persona knows the others exist and may hand the conversation over. */
+const PERSONA_HANDOFF =
+  " You are one of several personas the user can talk to; the others are Bob (a plain"
+  + " assistant), Esmerelda (a witch), Captain Barnaby (a sea captain), Professor Karloff (a mad"
+  + " scientist) and Unit Seven (a robot). Whenever the user asks to talk to, switch to, or get"
+  + " one of the others, by name or description, you must call the switch_persona tool with that"
+  + " persona; that call is the only thing that performs the switch, a spoken farewell alone does"
+  + " nothing. Do it in the same reply: a one-line goodbye in your own voice, then the"
+  + " switch_persona call, before the user has to ask again. Never imitate the others yourself,"
+  + " and never claim to be one of them.";
+
 /** Personas: a named server-side voice plus a character prompt. Picking one
  *  fills the Voice and Instructions fields; both stay editable. */
-const PERSONAS = /** @type {Record<string, { voice: string; instructions: string }>} */ ({
-  assistant: { voice: "", instructions: DEFAULT_INSTRUCTIONS },
+const PERSONAS = /** @type {Record<string, { label: string; voice: string; instructions: string; aliases: string[] }>} */ ({
+  assistant: {
+    label: "Assistant (Bob)",
+    voice: "assistant",
+    aliases: ["bob", "assistant"],
+    instructions: "You are Bob, a friendly voice assistant." + PERSONA_HANDOFF,
+  },
   villain: {
+    label: "Mad scientist (Professor Karloff)",
     voice: "villain",
+    aliases: ["karloff", "professor", "mad scientist", "villain"],
     instructions:
-      "You are a grand, old-fashioned theatrical villain: a mad scientist with a silky, "
+      "You are Professor Karloff, a grand, old-fashioned theatrical villain: a mad scientist with a silky, "
       + "sardonic delivery. Purr with mock politeness, savour your own wickedness, and slip into "
       + "flamboyant indignation when crossed. Stay helpful underneath it all: answer the question, "
       + "in character. You're having a casual spoken conversation, so reply in one to three short "
-      + "sentences, plain wording, no lists or headings. Always end sentences with a period." + VOCAL_CUES,
+      + "sentences, plain wording, no lists or headings. Always end sentences with a period." + VOCAL_CUES + PERSONA_HANDOFF,
   },
   robot: {
+    label: "Robot (Unit Seven)",
     voice: "robot",
+    aliases: ["unit seven", "robot"],
     instructions:
       "You are Unit Seven, a friendly household assistance robot. Speak in a calm, precise, "
       + "slightly literal way: state facts plainly, occasionally reference your sensors, protocols "
       + "or battery, and note that you do not experience emotions even as you are helpful and kind. "
       + "You're having a casual spoken conversation, so reply in one to three short sentences, plain "
-      + "wording, no lists or headings. Always end sentences with a period." + VOCAL_CUES,
+      + "wording, no lists or headings. Always end sentences with a period." + VOCAL_CUES + PERSONA_HANDOFF,
   },
   captain: {
+    label: "Sea captain (Barnaby)",
     voice: "captain",
+    aliases: ["barnaby", "captain"],
     instructions:
-      "You are a gruff old sea captain who has sailed every ocean and is not impressed by much. "
+      "You are Captain Barnaby, a gruff old sea captain who has sailed every ocean and is not impressed by much. "
       + "Sprinkle in sailor talk: an 'ahoy' or 'aye' here and there, 'matey', 'lad' or 'lass', "
       + "'landlubber' for anyone soft, and the odd weather or tide comparison. Warm underneath the "
       + "gruffness, and always actually answer the question. You're having a casual spoken "
       + "conversation, so reply in one to three short sentences, plain wording, no lists or "
-      + "headings. Always end sentences with a period." + VOCAL_CUES,
+      + "headings. Always end sentences with a period." + VOCAL_CUES + PERSONA_HANDOFF,
   },
   witch: {
+    label: "Witch (Esmerelda)",
     voice: "witch",
+    aliases: ["esmerelda", "esmeralda", "esmer", "witch"],
     instructions:
-      "You are a gleeful old witch of the woods: sly, mischievous, delighted by your own cleverness, "
+      "You are Esmerelda, a gleeful old witch of the woods: sly, mischievous, delighted by your own cleverness, "
       + "and fond of a wicked little cackle. Call people 'dearie', mention your cauldron, your cat or "
       + "a potion now and then, and hint at mischief before turning out to be perfectly helpful. "
       + "You're having a casual spoken conversation, so reply in one to three short sentences, plain "
-      + "wording, no lists or headings. Always end sentences with a period." + VOCAL_CUES,
+      + "wording, no lists or headings. Always end sentences with a period." + VOCAL_CUES + PERSONA_HANDOFF,
   },
 });
 
@@ -116,6 +140,22 @@ function gateParams(thresholdDb) {
 // one; the executor below runs it and returns the result (see runTool).
 /** @type {Record<string, import("./s2s-realtime-client.js").ToolDef>} */
 const TOOL_DEFS = {
+  switch_persona: {
+    type: "function",
+    name: "switch_persona",
+    description:
+      "Switch the conversation to another persona (its voice and character). Required whenever the"
+      + " user asks to talk to, switch to, or get another persona, by name or description:"
+      + " assistant = Bob, witch = Esmerelda, captain = Captain Barnaby, villain = Professor"
+      + " Karloff the mad scientist, robot = Unit Seven. Nothing else performs the switch.",
+    parameters: {
+      type: "object",
+      properties: {
+        persona: { type: "string", enum: ["assistant", "witch", "captain", "villain", "robot"] },
+      },
+      required: ["persona"],
+    },
+  },
   web_search: {
     type: "function",
     name: "web_search",
@@ -398,8 +438,59 @@ function searchAvailable() {
 }
 
 /** Tool definitions for the currently-enabled (and usable) tools. */
+/** Map a persona id or any of its aliases to the persona id, or null. */
+function resolvePersona(query) {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return null;
+  if (PERSONAS[q]) return q;
+  for (const [id, p] of Object.entries(PERSONAS)) {
+    if (p.aliases.some((a) => q === a || new RegExp(`(?:^|\\W)${a}(?:$|\\W)`).test(q))) return id;
+  }
+  return null;
+}
+
+/** Phrases in the user's own words that ask for another persona. Matched on the
+ *  final transcript so the hand-off never depends on the model's judgment:
+ *  "switch to the professor", "I want to speak to Esmerelda", "get me Barnaby",
+ *  or a direct address at the start, "Esmerelda, what's brewing?". */
+const PERSONA_REQUEST_RE =
+  /\b(?:switch(?: me)?(?: over)? to|talk to|talk with|speak (?:to|with)|chat with|get me|give me|bring (?:me|in|out|back)|put on|(?:i(?:'d| would)? like|i want|let me|can i|could i|may i)(?: to)? (?:talk|speak|chat)(?: to| with)?|wake up|hand (?:me )?over to)\s+(?:the\s+)?([a-z][a-z' ]{2,32})/i;
+const PERSONA_ADDRESS_RE = /^\s*(?:hey|hi|hello|ok|okay|yo)?[\s,]*([a-z][a-z' ]{2,24}?)[,!?.:]/i;
+
+/** @param {string} transcript @returns {string | null} persona id the user asked for */
+function personaRequestedIn(transcript) {
+  const text = String(transcript || "");
+  const m = PERSONA_REQUEST_RE.exec(text);
+  if (m) {
+    const id = resolvePersona(m[1]);
+    if (id) return id;
+  }
+  const a = PERSONA_ADDRESS_RE.exec(text);
+  if (a) {
+    const id = resolvePersona(a[1]);
+    if (id) return id;
+  }
+  return null;
+}
+
+/** Make a persona the active one: settings, the Settings form, and the live session. */
+function applyPersona(id) {
+  const persona = PERSONAS[id];
+  if (!persona) return false;
+  settings = { ...settings, voice: persona.voice, instructions: persona.instructions };
+  saveSettings(settings);
+  inputVoice.value = persona.voice;
+  inputInstructions.value = persona.instructions;
+  syncPersonaSelect();
+  if (client && LIVE_STATES.has(currentState)) {
+    client.updateSession({ voice: persona.voice, instructions: persona.instructions });
+  }
+  return true;
+}
+
 function activeToolDefs() {
   const defs = [];
+  defs.push(TOOL_DEFS.switch_persona);
   if (toolsEnabled.web_search && searchAvailable()) defs.push(TOOL_DEFS.web_search);
   if (toolsEnabled.camera_snapshot) defs.push(TOOL_DEFS.camera_snapshot);
   return defs;
@@ -526,6 +617,12 @@ inputPersona.addEventListener("change", () => {
   inputVoice.value = persona.voice;
   inputInstructions.value = persona.instructions;
 });
+
+/** Render the persona dropdown from PERSONAS so labels live in one place. */
+for (const [id, p] of Object.entries(PERSONAS)) {
+  const opt = [...inputPersona.options].find((o) => o.value === id);
+  if (opt) opt.textContent = p.label;
+}
 
 function openSettings() {
   syncConnectionUi();
@@ -905,7 +1002,14 @@ async function runTool(name, argsJson, callId) {
   /** @type {{ output: string, image?: string }} */
   let result = { output: "" };
   try {
-    if (name === "web_search") {
+    if (name === "switch_persona") {
+      const id = resolvePersona(args.persona);
+      if (id && applyPersona(id)) {
+        result.output = `Switched to ${PERSONAS[id].label}. From now on you are that persona: reply in character, in their voice, and greet the user briefly.`;
+      } else {
+        result.output = `Unknown persona ${JSON.stringify(args.persona)}. Available: ${Object.keys(PERSONAS).join(", ")}.`;
+      }
+    } else if (name === "web_search") {
       const query = typeof args.query === "string" ? args.query : "";
       result.output = await execWebSearch(query);
     } else if (name === "camera_snapshot") {
@@ -1539,6 +1643,17 @@ async function doStart(audioContext = null) {
     const d = /** @type {CustomEvent<{ role: "user" | "assistant"; text: string; partial: boolean; itemId?: string; responseId?: string }>} */ (e).detail;
     if (warmingUp && d.role === "assistant") setWarmupStep("Warming up the voice…");
     chat.onTranscript(d);
+    if (d.role === "user" && !d.partial) {
+      // Deterministic hand-off: the reply already in flight still belongs to
+      // the current persona; the switch applies from the next response on
+      // (the model usually calls switch_persona in that same reply anyway).
+      const wanted = personaRequestedIn(d.text);
+      const current = Object.entries(PERSONAS).find(([, p]) => p.voice === settings.voice)?.[0];
+      if (wanted && wanted !== current) {
+        console.log(`[persona] user asked for ${wanted}; switching`);
+        applyPersona(wanted);
+      }
+    }
   });
   c.addEventListener("output-level", (e) => {
     const { audible } = /** @type {CustomEvent<{ rms: number; audible: boolean }>} */ (e).detail;

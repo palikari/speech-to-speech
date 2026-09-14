@@ -117,7 +117,7 @@ _Update at the end of a session that changed something._
   model / Warming up the voice; 25 s fail-safe), and assistant bubbles now
   stay while speaker output is audible (client emits `output-level`; chat
   view bumps the bubble's expiry, fades 3 s after the last word). Assets are
-  cache-busted with `?v=audio-24k-v10` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
+  cache-busted with `?v=audio-24k-v12` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
   editing demo JS/CSS or browsers keep the old files.
 - 2026-09-14 (tools): the LLM handler now parses the model's native
   `<tool_call><function=…><parameter=…>` XML blocks as well as the prompted
@@ -163,6 +163,17 @@ _Update at the end of a session that changed something._
 - Guards kept as belt-and-braces: trailing silence 1.2 s, held sound 0.8 s
   (spectrum anchored to the run start, one dip tolerated, threshold 0.95),
   per-sentence frame budget, repetition penalty 1.2.
+- 2026-09-14 (persona switching): personas have names (Bob, Esmerelda,
+  Captain Barnaby, Professor Karloff, Unit Seven). Two paths switch them:
+  (1) a client-side `switch_persona` tool the model calls (prompt insists the
+  call is the only thing that switches and to do it in the same reply, which
+  Qwen3.8 follows: goodbye in the old voice, then the new persona greets);
+  (2) a deterministic fallback in demo/main.js that matches "speak to /
+  switch to / get me X" or a leading address "Esmerelda, ..." in the user's
+  final transcript and applies the persona for the next response. Both go
+  through `applyPersona()`, which updates settings, the Settings form and the
+  live session. The assistant persona's voice is now the named `assistant`
+  clip so switching back works within a session.
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache
