@@ -149,6 +149,20 @@ _Update at the end of a session that changed something._
   witch held a vowel for the rest of a sentence; the silence guard cannot see
   a loud stuck frame, so `_stream` now has a held-sound guard (frozen
   spectrum for 0.8 s -> cut, `--breeze_tts_max_held_sound`).
+- 2026-09-14 (root cause of every "server vs lab" gap): mlx-lm's compiled
+  sampler (`mx.compile` capturing `mx.random.state`) returns the same token
+  on every call on any non-main thread and ignores `mx.random.seed`. The
+  pipeline runs TTS on a worker thread, so identical text always produced
+  identical audio and a stuck sentence stuck on every run (the witch's
+  "whooo"). Fixed in the mlx-audio fork (keyed plain-op sampler, commit
+  9af51fb, pulled in via uv.lock). Verified: the forced witch greeting now
+  varies run to run and completes 5/5. Two related facts: a key must be
+  created on the thread that uses it, and the first array evaluation in a
+  process must happen on the main thread. The LLM path is unaffected only
+  because upstream generates greedily (no sampler passed to stream_generate).
+- Guards kept as belt-and-braces: trailing silence 1.2 s, held sound 0.8 s
+  (spectrum anchored to the run start, one dip tolerated, threshold 0.95),
+  per-sentence frame budget, repetition penalty 1.2.
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache

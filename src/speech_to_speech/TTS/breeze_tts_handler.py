@@ -76,7 +76,8 @@ DEFAULT_MAX_TRAILING_SILENCE = 1.2
 # this long never occurs in speech; it is the model stuck on one codec frame.
 DEFAULT_MAX_HELD_SOUND = 0.8
 HELD_WINDOW_SECONDS = 0.05
-HELD_SIMILARITY = 0.985
+HELD_SIMILARITY = 0.95
+HELD_DIP_TOLERANCE = 1  # windows in a row that may dip below the threshold
 HELD_KEEP_SECONDS = 0.15
 # Sentence boundaries (Latin and CJK terminators) and line breaks. Each sentence
 # is generated as its own utterance: pauses between sentences are then never
@@ -471,11 +472,13 @@ class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
     def _held_sound_cut(chunk: np.ndarray, state: dict[str, Any], limit_windows: int) -> int | None:
         """Return the sample index at which to cut *chunk* if a held sound is detected.
 
-        Walks 50 ms windows; a loud window whose normalized magnitude spectrum
-        is nearly identical to the previous one extends the run. Once the run
-        reaches *limit_windows*, cut just after the run's first window (kept
-        for a natural release) — or at the chunk start if the run began in an
-        earlier chunk. ``state`` carries the run and previous spectrum across chunks.
+        Walks 50 ms windows and compares each loud window's normalized magnitude
+        spectrum with the spectrum at the start of the current run (a stuck codec
+        frame wobbles slightly frame to frame, so consecutive-window comparison
+        misses it). Up to HELD_DIP_TOLERANCE dips in a row are tolerated. Once
+        the run reaches *limit_windows*, cut just after its first window, or at
+        the chunk start if the run began in an earlier chunk. ``state`` carries
+        the run across chunks.
         """
         win = int(PIPELINE_SR * HELD_WINDOW_SECONDS)
         n = len(chunk) // win
@@ -486,18 +489,28 @@ class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
         spec = np.abs(np.fft.rfft(x * np.hanning(win), axis=1))
         spec /= np.linalg.norm(spec, axis=1, keepdims=True) + 1e-9
         run: int = state["run"]
-        prev = state["prev"]
+        miss: int = state["miss"]
+        ref = state["ref"]
+        run_start = -run  # window index (may be negative: run began in an earlier chunk)
         for i in range(n):
-            similar = prev is not None and loud[i] and float(np.dot(spec[i], prev)) > HELD_SIMILARITY
-            run = run + 1 if similar else 0
-            prev = spec[i]
+            similar = ref is not None and loud[i] and float(np.dot(spec[i], ref)) > HELD_SIMILARITY
+            if similar:
+                run += 1
+                miss = 0
+            else:
+                miss += 1
+                if miss > HELD_DIP_TOLERANCE or not loud[i]:
+                    run, miss, ref, run_start = 0, 0, spec[i], i
+                    continue
+                run += 1
+            if ref is None:
+                ref, run_start = spec[i], i
             if run >= limit_windows:
-                start_window = i - run + 1
-                state["run"], state["prev"] = 0, None
-                if start_window < 0:
+                state["run"], state["miss"], state["ref"] = 0, 0, None
+                if run_start < 0:
                     return 0
-                return min(len(chunk), start_window * win + int(PIPELINE_SR * HELD_KEEP_SECONDS))
-        state["run"], state["prev"] = run, prev
+                return min(len(chunk), run_start * win + int(PIPELINE_SR * HELD_KEEP_SECONDS))
+        state["run"], state["miss"], state["ref"] = run, miss, ref
         return None
 
     def _stream(self, gen: Any, label: str) -> Iterator[np.ndarray]:
@@ -514,7 +527,7 @@ class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
         held_windows_limit = int(
             round(max(0.0, getattr(self, "max_held_sound", DEFAULT_MAX_HELD_SOUND)) / HELD_WINDOW_SECONDS)
         )
-        held_state: dict[str, Any] = {"run": 0, "prev": None}
+        held_state: dict[str, Any] = {"run": 0, "miss": 0, "ref": None}
         stopped_on_held = False
 
         for item in gen:

@@ -2729,7 +2729,7 @@ wheels = [
 [[package]]
 name = "mlx-audio"
 version = "0.5.3"
-source = { git = "https://github.com/palikari/mlx-audio.git?branch=breeze-speedups#d8197bc3cfc5f87e8bdbdf047bb371150ff0d67d" }
+source = { git = "https://github.com/palikari/mlx-audio.git?branch=breeze-speedups#9af51fbd18336d6ff92b7a96f9eef8980a69e509" }
 dependencies = [
     { name = "huggingface-hub" },
     { name = "miniaudio" },
