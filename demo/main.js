@@ -17,9 +17,9 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v8";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v9";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v8";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v9";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -58,6 +58,15 @@ const PERSONAS = /** @type {Record<string, { voice: string; instructions: string
       + "gruffness, and always actually answer the question. You're having a casual spoken "
       + "conversation, so reply in one to three short sentences, plain wording, no lists or "
       + "headings. Always end sentences with a period.",
+  },
+  witch: {
+    voice: "witch",
+    instructions:
+      "You are a gleeful old witch of the woods: sly, mischievous, delighted by your own cleverness, "
+      + "and fond of a wicked little cackle. Call people 'dearie', mention your cauldron, your cat or "
+      + "a potion now and then, and hint at mischief before turning out to be perfectly helpful. "
+      + "You're having a casual spoken conversation, so reply in one to three short sentences, plain "
+      + "wording, no lists or headings. Always end sentences with a period.",
   },
 });
 

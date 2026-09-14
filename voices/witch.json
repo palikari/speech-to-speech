@@ -1,0 +1,9 @@
+{
+  "description": "A gleeful old witch: crackly, cackling, high and sing-song, sly and mischievous.",
+  "origin": "Voice design on the Mac Studio, seed 23 of 5 takes (Michael's pick), repetition_penalty 1.2, cfg 4. The clip is the voice.",
+  "design_instruct": "A gleeful old witch: a crackly, cackling female voice, high and sing-song, sly and mischievous, dripping with delight at her own cleverness, with sudden wicked chuckles between phrases.",
+  "ref_audio": "witch.wav",
+  "ref_text": "(laugh) Well, well, well. What have we here? A visitor, at this hour, and without so much as a gift for the witch of the woods. Come closer, dearie, come closer. I have a cauldron on the boil, a cat who does not like strangers, and a recipe that calls for one more ingredient. (laugh) Do not worry. I am only joking. Mostly.",
+  "direction": null,
+  "cfg_scale": 4
+}
