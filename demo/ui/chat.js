@@ -20,6 +20,8 @@ import { $, escHtml, DEBUG } from "./dom.js";
 
 // How long an assistant bubble stays after the last audible word.
 const ASSISTANT_LINGER_AFTER_SPEECH_MS = 3000;
+// Upper bound on a thinking placeholder that never got a reply or an end event.
+const THINKING_FAILSAFE_MS = 30000;
 
 const WRENCH_PATH = `<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>`;
 const CHAT_BUBBLE_SVG = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
@@ -75,6 +77,13 @@ export class ChatView {
     /** The assistant bubble currently being spoken; kept alive while audio plays.
      *  @type {HTMLElement | null} */
     this._latestAsstBubble = null;
+    /** Placeholder shown while the assistant is composing; the transcript
+     *  fills it in rather than stacking a second bubble.
+     *  @type {HTMLElement | null} */
+    this._thinkingBubble = null;
+    /** A tool ran during the current thinking spell: the reply is still coming
+     *  in a follow-up response, so keep the dots across the response boundary. */
+    this._thinkingSawTool = false;
 
     // ── Ephemeral bubble auto-dismiss ──────────────────────────────────────
     // Per-element expiry (epoch ms). A bubble fades once its expiry passes —
@@ -432,6 +441,8 @@ export class ChatView {
     this._activeUserItemId = "";
     this._assistantDismissedUserItemId = "";
     this._asstByResp.clear();
+    if (opts?.dismiss) this.dismissThinking();
+    else { this._thinkingBubble = null; this._thinkingSawTool = false; }
   }
 
   // ── Client event handlers ─────────────────────────────────────────────────
@@ -441,6 +452,7 @@ export class ChatView {
    * @param {{ itemId?: string }} [detail]
    */
   onUserTurnStarted(detail = {}) {
+    this.dismissThinking();
     const id = detail.itemId || `_u${++this._anonSeq}`;
     // A speculative continuation can reuse an incomplete item, so a fresh
     // start supersedes any tombstone left by prior assistant activity.
@@ -522,7 +534,7 @@ export class ChatView {
       const rid = d.responseId || `_a${++this._anonSeq}`;
       const entry = this._asstByResp.get(rid);
       if (!entry) {
-        const bubble = this._spawnBubble("assistant", d.text);
+        const bubble = this._claimThinkingBubble(d.text) ?? this._spawnBubble("assistant", d.text);
         this._asstByResp.set(rid, { bubble, hist: this._appendHistMsg("assistant", d.text, false) });
         this._latestAsstBubble = bubble;
         this._bumpDismiss(bubble);
@@ -602,6 +614,50 @@ export class ChatView {
   }
 
   /**
+   * The pipeline is composing a reply (your turn ended). Show an assistant
+   * bubble with pulsing dots; the transcript will fill it in when it arrives.
+   */
+  onAssistantThinking() {
+    const live = this._thinkingBubble;
+    if (live?.isConnected && !live.classList.contains("out")) return;
+    const el = this._spawnBubble("assistant", "");
+    el.classList.add("thinking");
+    el.setAttribute("role", "status");
+    el.setAttribute("aria-live", "polite");
+    const body = /** @type {HTMLElement | null} */ (el.querySelector(".bubble-body"));
+    if (body) {
+      body.hidden = false;
+      body.innerHTML = '<span class="thinking-dots" aria-hidden="true"><i></i><i></i><i></i></span>';
+    }
+    this._thinkingBubble = el;
+    this._thinkingSawTool = false;
+    // Fail-safe only: normal removal is by the transcript, response end, or barge-in.
+    this._bumpDismiss(el, THINKING_FAILSAFE_MS);
+  }
+
+  /** Drop the thinking placeholder without a reply (barge-in, cancel, tool-only turn). */
+  dismissThinking() {
+    const el = this._thinkingBubble;
+    this._thinkingBubble = null;
+    this._thinkingSawTool = false;
+    if (el?.isConnected && !el.classList.contains("out")) this._dismissBubble(el);
+  }
+
+  /**
+   * Turn the live thinking bubble into the real reply bubble.
+   * @param {string} text @returns {HTMLElement | null}
+   */
+  _claimThinkingBubble(text) {
+    const el = this._thinkingBubble;
+    this._thinkingBubble = null;
+    this._thinkingSawTool = false;
+    if (!el?.isConnected || el.classList.contains("out")) return null;
+    el.classList.remove("thinking");
+    this._updateBubbleText(el, text);
+    return el;
+  }
+
+  /**
    * Speaker output is audible right now. The transcript arrives before playback
    * starts, so a fixed timer would fade the bubble mid-sentence; instead keep
    * pushing its expiry out while the words are actually being spoken, and let
@@ -622,6 +678,11 @@ export class ChatView {
     const { responseId, status, audible, transcript } = detail;
     if (DEBUG) console.debug(`[ui] response-finished resp=${responseId} status=${status} audible=${audible} known=${this._asstByResp.has(responseId)}`);
     this.onAssistantActivity();
+    if (this._thinkingSawTool && status !== "cancelled") {
+      this._thinkingSawTool = false; // the reply arrives in the follow-up response
+    } else {
+      this.dismissThinking();
+    }
     // Without an id we can't target a specific response; the bubble will
     // auto-dismiss on its own timer regardless.
     if (!responseId) return;
@@ -652,6 +713,7 @@ export class ChatView {
   /** The model called a tool — show an ephemeral "running" bubble.
    *  @param {string} name */
   onToolCall(name) {
+    if (this._thinkingBubble) this._thinkingSawTool = true;
     this._bumpDismiss(this._spawnBubble("tool", name));
     this._markUnread();
   }

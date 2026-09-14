@@ -17,9 +17,9 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v2";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v3";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v2";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v3";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -1705,6 +1705,7 @@ function onClientStatus(status) {
       break;
     case "processing":
       setState("processing");
+      chat.onAssistantThinking();
       break;
     case "ai-speaking":
       setState("ai-speaking");

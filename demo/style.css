@@ -2740,3 +2740,30 @@ body.cam-on .footer {
   0%, 100% { opacity: 0.4; }
   50%      { opacity: 0.75; }
 }
+
+
+/* Assistant "thinking" placeholder: three pulsing dots in an otherwise
+ * ordinary assistant bubble. Same cadence as the orb's indicator. The
+ * transcript replaces the dots in place when it arrives. */
+.bubble.assistant.thinking .bubble-body {
+  display: flex;
+  align-items: center;
+  min-height: 19px;
+  min-width: 40px;
+}
+.thinking-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--voice-assistant);
+}
+.thinking-dots i {
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: thinking-dot 1.25s ease-in-out infinite;
+}
+.thinking-dots i:nth-child(2) { animation-delay: 0.16s; }
+.thinking-dots i:nth-child(3) { animation-delay: 0.32s; }
