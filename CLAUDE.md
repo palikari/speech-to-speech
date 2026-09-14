@@ -117,7 +117,7 @@ _Update at the end of a session that changed something._
   model / Warming up the voice; 25 s fail-safe), and assistant bubbles now
   stay while speaker output is audible (client emits `output-level`; chat
   view bumps the bubble's expiry, fades 3 s after the last word). Assets are
-  cache-busted with `?v=audio-24k-v7` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
+  cache-busted with `?v=audio-24k-v8` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
   editing demo JS/CSS or browsers keep the old files.
 - 2026-09-14 (tools): the LLM handler now parses the model's native
   `<tool_call><function=…><parameter=…>` XML blocks as well as the prompted
@@ -137,10 +137,10 @@ _Update at the end of a session that changed something._
   `--breeze_tts_voice NAME` makes one the startup default. Current voices:
   `assistant` (designed here) and `villain` (Michael's 41 s "mad scientist"
   clip designed on the MacBook, seed 9; the clip is the voice, never re-roll)
-  and `robot` (Unit Seven, designed here, seed 2 of 5 takes; Michael picked it).
+  `robot` (Unit Seven, designed here, seed 2 of 5 takes; Michael picked it) and
+  `captain` (gruff old sea captain, designed here, seed 12).
   The demo Settings has a Persona picker that sets the voice name and the
-  character prompt (`PERSONAS` in demo/main.js). Planned: sea captain and witch, once
-  their clips are made (recipe: design 5 seeds of a 60-word script in the lab,
+  character prompt (`PERSONAS` in demo/main.js). Planned: witch, once its clip is picked (recipe: design 5 seeds of a 60-word script in the lab,
   STT-check completeness, send takes, install the pick as voices/<name>.{wav,json}).
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn

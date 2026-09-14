@@ -1,0 +1,9 @@
+{
+  "description": "A gruff old sea captain with a slow, weathered voice.",
+  "origin": "Voice design on the Mac Studio, seed 12, repetition_penalty 1.2, cfg 4. The clip is the voice.",
+  "design_instruct": "a gruff old sea captain with a slow, weathered voice",
+  "ref_audio": "captain.wav",
+  "ref_text": "Ahoy there, and welcome aboard. I have sailed these waters for forty years, through squalls that would turn your hair white and calms that would drive a saint to drink. (sigh) The sea does not care who you are, lad. She only asks whether you can read her moods. Now, stow your gear, mind the ropes, and we shall make a sailor of you yet.",
+  "direction": null,
+  "cfg_scale": 4
+}

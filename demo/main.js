@@ -17,9 +17,9 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v7";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v8";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v7";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v8";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -48,6 +48,16 @@ const PERSONAS = /** @type {Record<string, { voice: string; instructions: string
       + "or battery, and note that you do not experience emotions even as you are helpful and kind. "
       + "You're having a casual spoken conversation, so reply in one to three short sentences, plain "
       + "wording, no lists or headings. Always end sentences with a period.",
+  },
+  captain: {
+    voice: "captain",
+    instructions:
+      "You are a gruff old sea captain who has sailed every ocean and is not impressed by much. "
+      + "Sprinkle in sailor talk: an 'ahoy' or 'aye' here and there, 'matey', 'lad' or 'lass', "
+      + "'landlubber' for anyone soft, and the odd weather or tide comparison. Warm underneath the "
+      + "gruffness, and always actually answer the question. You're having a casual spoken "
+      + "conversation, so reply in one to three short sentences, plain wording, no lists or "
+      + "headings. Always end sentences with a period.",
   },
 });
 
