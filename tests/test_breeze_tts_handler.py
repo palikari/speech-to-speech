@@ -421,3 +421,19 @@ def test_stream_leaves_changing_speech_alone(monkeypatch, tmp_path, caplog):
 
     assert sum(len(b) for b in blocks) / PIPELINE_SR >= 3.9
     assert "held sound" not in caplog.text
+
+
+def test_stream_cuts_a_wobbling_held_sound(monkeypatch, tmp_path, caplog):
+    """A stuck codec frame is not a pure tone: it wobbles a little every few windows."""
+    handler, _fake = _make_handler(monkeypatch, tmp_path, blocksize=512, max_held_sound=0.8)
+    sr = 24000
+    # 9 s of one vowel: 150 ms steady, then a 50 ms nudge, like a stuck codec frame
+    wobble = np.concatenate([_tone(0.15, hz=220.0) if k % 2 == 0 else _tone(0.05, hz=228.0) for k in range(90)])
+    items = [SimpleNamespace(audio=_speechlike(0.8), sample_rate=sr)]
+    items += [SimpleNamespace(audio=wobble[i : i + 9600], sample_rate=sr) for i in range(0, len(wobble) - 9600, 9600)]
+
+    with caplog.at_level(logging.INFO, logger="speech_to_speech.TTS.breeze_tts_handler"):
+        blocks = list(handler._stream(iter(items), label="test"))
+
+    assert sum(len(b) for b in blocks) / PIPELINE_SR <= 2.5
+    assert "stopped on a held sound" in caplog.text
