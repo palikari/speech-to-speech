@@ -17,15 +17,23 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v9";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v10";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v9";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v10";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
 // Qwen3-TTS speaker name or a Breeze voice description.
 const DEFAULT_VOICE = "";
 const DEFAULT_INSTRUCTIONS = "You are a friendly voice assistant.";
+
+/** Breeze TTS voices these vocal cues; the base voice rules otherwise forbid
+ *  emote text, so character personas grant them explicitly. */
+const VOCAL_CUES =
+  " You may start a sentence with one vocal cue in parentheses, chosen only from"
+  + " (laugh), (chuckle), (sigh), (clears throat) or (cough), when it really fits"
+  + " the moment. Most replies should have none; use one in perhaps every third or"
+  + " fourth reply, never more than one, and never any other stage direction.";
 
 /** Personas: a named server-side voice plus a character prompt. Picking one
  *  fills the Voice and Instructions fields; both stay editable. */
@@ -38,7 +46,7 @@ const PERSONAS = /** @type {Record<string, { voice: string; instructions: string
       + "sardonic delivery. Purr with mock politeness, savour your own wickedness, and slip into "
       + "flamboyant indignation when crossed. Stay helpful underneath it all: answer the question, "
       + "in character. You're having a casual spoken conversation, so reply in one to three short "
-      + "sentences, plain wording, no lists or headings. Always end sentences with a period.",
+      + "sentences, plain wording, no lists or headings. Always end sentences with a period." + VOCAL_CUES,
   },
   robot: {
     voice: "robot",
@@ -47,7 +55,7 @@ const PERSONAS = /** @type {Record<string, { voice: string; instructions: string
       + "slightly literal way: state facts plainly, occasionally reference your sensors, protocols "
       + "or battery, and note that you do not experience emotions even as you are helpful and kind. "
       + "You're having a casual spoken conversation, so reply in one to three short sentences, plain "
-      + "wording, no lists or headings. Always end sentences with a period.",
+      + "wording, no lists or headings. Always end sentences with a period." + VOCAL_CUES,
   },
   captain: {
     voice: "captain",
@@ -57,7 +65,7 @@ const PERSONAS = /** @type {Record<string, { voice: string; instructions: string
       + "'landlubber' for anyone soft, and the odd weather or tide comparison. Warm underneath the "
       + "gruffness, and always actually answer the question. You're having a casual spoken "
       + "conversation, so reply in one to three short sentences, plain wording, no lists or "
-      + "headings. Always end sentences with a period.",
+      + "headings. Always end sentences with a period." + VOCAL_CUES,
   },
   witch: {
     voice: "witch",
@@ -66,7 +74,7 @@ const PERSONAS = /** @type {Record<string, { voice: string; instructions: string
       + "and fond of a wicked little cackle. Call people 'dearie', mention your cauldron, your cat or "
       + "a potion now and then, and hint at mischief before turning out to be perfectly helpful. "
       + "You're having a casual spoken conversation, so reply in one to three short sentences, plain "
-      + "wording, no lists or headings. Always end sentences with a period.",
+      + "wording, no lists or headings. Always end sentences with a period." + VOCAL_CUES,
   },
 });
 

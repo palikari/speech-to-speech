@@ -20,6 +20,12 @@ import { $, escHtml, DEBUG } from "./dom.js";
 
 // How long an assistant bubble stays after the last audible word.
 const ASSISTANT_LINGER_AFTER_SPEECH_MS = 3000;
+// Breeze vocal cues the model may emit; spoken, but not worth showing as text.
+const VOCAL_CUE_RE = /\((?:laugh|chuckle|sigh|clears throat|cough)\)\s*/gi;
+/** @param {string} text */
+function stripVocalCues(text) {
+  return typeof text === "string" ? text.replace(VOCAL_CUE_RE, "").trim() : text;
+}
 // Upper bound on a thinking placeholder that never got a reply or an end event.
 const THINKING_FAILSAFE_MS = 30000;
 
@@ -149,6 +155,7 @@ export class ChatView {
    * @returns {HTMLElement}
    */
   _buildMessageEl({ container, prefix, role, text, partial = false }) {
+    text = stripVocalCues(text);
     const el = document.createElement("div");
     el.className = `${container} ${role}`;
     const label = role === "user" ? "You" : "Assistant";
@@ -215,6 +222,7 @@ export class ChatView {
 
   /** @param {HTMLElement} el @param {string} text */
   _updateBubbleText(el, text) {
+    text = stripVocalCues(text);
     el.classList.remove("voice", "listening", "sending");
     el.removeAttribute("role");
     el.removeAttribute("aria-live");
@@ -341,6 +349,7 @@ export class ChatView {
 
   /** @param {HTMLElement | null} el @param {string} text @param {boolean} partial */
   _updateHistMsg(el, text, partial) {
+    text = stripVocalCues(text);
     if (!el) return;
     const body = /** @type {HTMLElement | null} */ (el.querySelector(".hist-body"));
     if (!body) return;
