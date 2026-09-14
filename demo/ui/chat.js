@@ -84,6 +84,9 @@ export class ChatView {
     /** A tool ran during the current thinking spell: the reply is still coming
      *  in a follow-up response, so keep the dots across the response boundary. */
     this._thinkingSawTool = false;
+    /** Tool chips shown during the current reply; dismissed when its text arrives.
+     *  @type {HTMLElement[]} */
+    this._toolBubbles = [];
 
     // ── Ephemeral bubble auto-dismiss ──────────────────────────────────────
     // Per-element expiry (epoch ms). A bubble fades once its expiry passes —
@@ -441,8 +444,8 @@ export class ChatView {
     this._activeUserItemId = "";
     this._assistantDismissedUserItemId = "";
     this._asstByResp.clear();
-    if (opts?.dismiss) this.dismissThinking();
-    else { this._thinkingBubble = null; this._thinkingSawTool = false; }
+    if (opts?.dismiss) { this.dismissThinking(); this._dismissToolBubbles(); }
+    else { this._thinkingBubble = null; this._thinkingSawTool = false; this._toolBubbles = []; }
   }
 
   // ── Client event handlers ─────────────────────────────────────────────────
@@ -528,6 +531,10 @@ export class ChatView {
       this._markUnread();
     } else if (d.role === "assistant") {
       this.onAssistantActivity();
+      // The reply is here, so any tool chips from this turn are done. Fade
+      // them now: the reaper alone would hold them behind the reply bubble,
+      // which stays up while the words are spoken.
+      this._dismissToolBubbles();
       // Assistant transcript arrives once, as the full text, keyed by
       // response_id so a cancelled speculative response can be removed later. A
       // missing id gets a unique key so two id-less replies never collide.
@@ -635,6 +642,14 @@ export class ChatView {
     this._bumpDismiss(el, THINKING_FAILSAFE_MS);
   }
 
+  _dismissToolBubbles() {
+    for (const chip of this._toolBubbles) {
+      if (chip.isConnected && !chip.classList.contains("out")) this._dismissBubble(chip);
+    }
+    this._toolBubbles = [];
+    this._scheduleBubbleReaper();
+  }
+
   /** Drop the thinking placeholder without a reply (barge-in, cancel, tool-only turn). */
   dismissThinking() {
     const el = this._thinkingBubble;
@@ -714,7 +729,9 @@ export class ChatView {
    *  @param {string} name */
   onToolCall(name) {
     if (this._thinkingBubble) this._thinkingSawTool = true;
-    this._bumpDismiss(this._spawnBubble("tool", name));
+    const chip = this._spawnBubble("tool", name);
+    this._toolBubbles.push(chip);
+    this._bumpDismiss(chip);
     this._markUnread();
   }
 
