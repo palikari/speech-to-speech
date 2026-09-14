@@ -22,7 +22,9 @@ import { $, truncateError, DEBUG } from "./ui/dom.js";
 import { ChatView } from "./ui/chat.js";
 import { Account } from "./ui/account.js";
 
-const DEFAULT_VOICE = "Aiden";
+// Blank means "use the server's configured voice"; the field also accepts a
+// Qwen3-TTS speaker name or a Breeze voice description.
+const DEFAULT_VOICE = "";
 const DEFAULT_INSTRUCTIONS = "You are a friendly voice assistant.";
 
 const STORAGE_KEYS = {
@@ -985,7 +987,7 @@ function createResumedAudioContext() {
 function readSettingsFromForm() {
   return {
     directUrl: allowDirect && !pinnedUrl ? inputLbUrl.value.trim() : settings.directUrl,
-    voice: inputVoice.value || DEFAULT_VOICE,
+    voice: inputVoice.value.trim() || DEFAULT_VOICE,
     instructions: inputInstructions.value.trim() || DEFAULT_INSTRUCTIONS,
     noiseGate: readGateThreshold(),
     transport: /** @type {"ws" | "webrtc"} */ (

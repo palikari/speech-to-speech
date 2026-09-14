@@ -256,22 +256,34 @@
               </small>
             </label>
 
-            <div class="field-row">
-              <label class="field">
-                <span>Voice</span>
-                <select id="voice">
-                  <option value="Aiden" selected>Aiden</option>
-                  <option value="Ryan">Ryan</option>
-                  <option value="Dylan">Dylan</option>
-                  <option value="Eric">Eric</option>
-                  <option value="Ono_Anna">Ono_Anna</option>
-                  <option value="Serena">Serena</option>
-                  <option value="Sohee">Sohee</option>
-                  <option value="Uncle_Fu">Uncle_Fu</option>
-                  <option value="Vivian">Vivian</option>
-                </select>
-              </label>
-            </div>
+            <label class="field">
+              <span>Voice</span>
+              <input
+                id="voice"
+                type="text"
+                list="voice-presets"
+                placeholder="Server default"
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <datalist id="voice-presets">
+                <option value="Aiden"></option>
+                <option value="Ryan"></option>
+                <option value="Dylan"></option>
+                <option value="Eric"></option>
+                <option value="Ono_Anna"></option>
+                <option value="Serena"></option>
+                <option value="Sohee"></option>
+                <option value="Uncle_Fu"></option>
+                <option value="Vivian"></option>
+              </datalist>
+              <small>
+                Leave blank for the server's configured voice. Qwen3-TTS takes a
+                speaker name from the list; Breeze takes a description of at least
+                three words (for example "a gruff old sea captain") and designs
+                that voice once per server run.
+              </small>
+            </label>
 
             <label class="field">
               <span>Microphone</span>

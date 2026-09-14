@@ -263,7 +263,8 @@ export class S2sRealtimeClient extends EventTarget {
     return new RealtimeAgent({
       name: "speech-to-speech-demo",
       instructions: this.options.instructions,
-      voice: this.options.voice,
+      // A blank voice is omitted so the server keeps its configured voice.
+      voice: this.options.voice || undefined,
       tools,
     });
   }
