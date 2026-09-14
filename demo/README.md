@@ -289,3 +289,7 @@ transport pick, and `s2s.audio.inputId` / `s2s.audio.outputId` for devices).
 
 - Backend: [huggingface/speech-to-speech](https://github.com/huggingface/speech-to-speech)
 - UI verbatim from `amir-tfrere/minimal-conversation-app-s2s-backend` (Pollen Robotics × Hugging Face)
+
+## Credits
+
+The favicon robot is from [Twemoji](https://github.com/jdecked/twemoji), licensed CC-BY 4.0.
