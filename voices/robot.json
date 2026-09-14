@@ -1,0 +1,9 @@
+{
+  "description": "Unit Seven, a friendly household robot: clear, even, slightly synthetic, precise clipped diction, flat but warm.",
+  "origin": "Voice design on the Mac Studio, seed 2, repetition_penalty 1.2, cfg 4. The clip is the voice.",
+  "design_instruct": "A friendly household robot: a clear, even, slightly synthetic male voice with precise, clipped diction, a gentle metallic timbre, a flat but warm cadence, and tidy little pauses between phrases, as if each sentence were being retrieved from memory.",
+  "ref_audio": "robot.wav",
+  "ref_text": "Greetings. I am Unit Seven, a household assistance robot, fully charged and ready to serve. My sensors indicate that you are a human, and my protocols suggest that I say: welcome home. I can manage your schedule, monitor the weather, and tell jokes at a precisely calibrated level of humor. Please note that I do not experience emotions, although I have been programmed to say that I am happy to help. Shall we begin?",
+  "direction": null,
+  "cfg_scale": 4
+}

@@ -272,7 +272,7 @@ def test_audio_asset_version_propagates_to_the_worklets():
     main = (REPO_ROOT / "demo/main.js").read_text()
     client = (REPO_ROOT / "demo/s2s-realtime-client.js").read_text()
 
-    version = "audio-24k-v6"
+    version = "audio-24k-v7"
     assert f"main.js?v={version}" in index
     assert f"s2s-realtime-client.js?v={version}" in main
     assert f'AUDIO_WORKLET_VERSION = "{version}"' in client

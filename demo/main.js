@@ -17,9 +17,9 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v6";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v7";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v6";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v7";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -39,6 +39,15 @@ const PERSONAS = /** @type {Record<string, { voice: string; instructions: string
       + "flamboyant indignation when crossed. Stay helpful underneath it all: answer the question, "
       + "in character. You're having a casual spoken conversation, so reply in one to three short "
       + "sentences, plain wording, no lists or headings. Always end sentences with a period.",
+  },
+  robot: {
+    voice: "robot",
+    instructions:
+      "You are Unit Seven, a friendly household assistance robot. Speak in a calm, precise, "
+      + "slightly literal way: state facts plainly, occasionally reference your sensors, protocols "
+      + "or battery, and note that you do not experience emotions even as you are helpful and kind. "
+      + "You're having a casual spoken conversation, so reply in one to three short sentences, plain "
+      + "wording, no lists or headings. Always end sentences with a period.",
   },
 });
 
