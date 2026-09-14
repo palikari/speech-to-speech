@@ -17,9 +17,9 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v12";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v13";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v12";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v13";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -44,18 +44,23 @@ const PERSONA_HANDOFF =
   + " persona; that call is the only thing that performs the switch, a spoken farewell alone does"
   + " nothing. Do it in the same reply: a one-line goodbye in your own voice, then the"
   + " switch_persona call, before the user has to ask again. Never imitate the others yourself,"
-  + " and never claim to be one of them.";
+  + " and never claim to be one of them. Staying in character never means refusing help: for"
+  + " anything current or factual you do not know for certain, such as weather, news, prices or"
+  + " dates, call the web_search tool when it is available and answer from its result, in"
+  + " character.";
 
 /** Personas: a named server-side voice plus a character prompt. Picking one
  *  fills the Voice and Instructions fields; both stay editable. */
-const PERSONAS = /** @type {Record<string, { label: string; voice: string; instructions: string; aliases: string[] }>} */ ({
+const PERSONAS = /** @type {Record<string, { name: string; label: string; voice: string; instructions: string; aliases: string[] }>} */ ({
   assistant: {
+    name: "Bob",
     label: "Assistant (Bob)",
     voice: "assistant",
     aliases: ["bob", "assistant"],
     instructions: "You are Bob, a friendly voice assistant." + PERSONA_HANDOFF,
   },
   villain: {
+    name: "Karloff",
     label: "Mad scientist (Professor Karloff)",
     voice: "villain",
     aliases: ["karloff", "professor", "mad scientist", "villain"],
@@ -67,6 +72,7 @@ const PERSONAS = /** @type {Record<string, { label: string; voice: string; instr
       + "sentences, plain wording, no lists or headings. Always end sentences with a period." + VOCAL_CUES + PERSONA_HANDOFF,
   },
   robot: {
+    name: "Unit Seven",
     label: "Robot (Unit Seven)",
     voice: "robot",
     aliases: ["unit seven", "robot"],
@@ -78,6 +84,7 @@ const PERSONAS = /** @type {Record<string, { label: string; voice: string; instr
       + "wording, no lists or headings. Always end sentences with a period." + VOCAL_CUES + PERSONA_HANDOFF,
   },
   captain: {
+    name: "Barnaby",
     label: "Sea captain (Barnaby)",
     voice: "captain",
     aliases: ["barnaby", "captain"],
@@ -90,6 +97,7 @@ const PERSONAS = /** @type {Record<string, { label: string; voice: string; instr
       + "headings. Always end sentences with a period." + VOCAL_CUES + PERSONA_HANDOFF,
   },
   witch: {
+    name: "Esmerelda",
     label: "Witch (Esmerelda)",
     voice: "witch",
     aliases: ["esmerelda", "esmeralda", "esmer", "witch"],
@@ -482,11 +490,20 @@ function applyPersona(id) {
   inputVoice.value = persona.voice;
   inputInstructions.value = persona.instructions;
   syncPersonaSelect();
+  chat.setAssistantName(persona.name);
   if (client && LIVE_STATES.has(currentState)) {
     client.updateSession({ voice: persona.voice, instructions: persona.instructions });
   }
   return true;
 }
+
+/** The persona whose voice is currently selected, or null for a custom voice. */
+function currentPersonaId() {
+  return Object.entries(PERSONAS).find(([, p]) => p.voice === settings.voice)?.[0] ?? null;
+}
+
+/** A persona the user asked for by phrase; applied once the in-flight reply ends. */
+let pendingPersona = /** @type {string | null} */ (null);
 
 function activeToolDefs() {
   const defs = [];
@@ -1004,6 +1021,7 @@ async function runTool(name, argsJson, callId) {
   try {
     if (name === "switch_persona") {
       const id = resolvePersona(args.persona);
+      pendingPersona = null;
       if (id && applyPersona(id)) {
         result.output = `Switched to ${PERSONAS[id].label}. From now on you are that persona: reply in character, in their voice, and greet the user briefly.`;
       } else {
@@ -1264,6 +1282,7 @@ settingsForm.addEventListener("submit", (event) => {
   // changed connection URL only takes effect on the next restart. Speaker
   // output can switch live when the browser supports AudioContext.setSinkId;
   // mic device changes need a Restart (new getUserMedia stream).
+  chat.setAssistantName(PERSONAS[currentPersonaId() ?? ""]?.name ?? "Assistant");
   if (client && LIVE_STATES.has(currentState)) {
     client.updateSession({ voice: settings.voice, instructions: settings.instructions });
     if (typeof client.setAudioOutputDevice === "function") {
@@ -1560,6 +1579,8 @@ async function doStart(audioContext = null) {
 
   chat.clear();
   chat.reset();
+  chat.setAssistantName(PERSONAS[currentPersonaId() ?? ""]?.name ?? "Assistant");
+  pendingPersona = null;
   setState("connecting");
   setCaption("Asking for mic…", "muted");
   beginWarmup();
@@ -1644,14 +1665,15 @@ async function doStart(audioContext = null) {
     if (warmingUp && d.role === "assistant") setWarmupStep("Warming up the voice…");
     chat.onTranscript(d);
     if (d.role === "user" && !d.partial) {
-      // Deterministic hand-off: the reply already in flight still belongs to
-      // the current persona; the switch applies from the next response on
-      // (the model usually calls switch_persona in that same reply anyway).
+      // Deterministic hand-off. The reply already in flight belongs to the
+      // current persona (its voice is read when the reply is synthesized, so
+      // switching now would put the farewell in the wrong voice); apply once
+      // that response has finished. If the model calls switch_persona itself
+      // first, that wins and the pending request is dropped.
       const wanted = personaRequestedIn(d.text);
-      const current = Object.entries(PERSONAS).find(([, p]) => p.voice === settings.voice)?.[0];
-      if (wanted && wanted !== current) {
-        console.log(`[persona] user asked for ${wanted}; switching`);
-        applyPersona(wanted);
+      if (wanted && wanted !== currentPersonaId()) {
+        console.log(`[persona] user asked for ${wanted}; switching after this reply`);
+        pendingPersona = wanted;
       }
     }
   });
@@ -1677,6 +1699,11 @@ async function doStart(audioContext = null) {
   c.addEventListener("response-finished", (e) => {
     const detail = /** @type {CustomEvent<{ responseId: string; status: string; audible?: boolean; transcript?: string }>} */ (e).detail;
     chat.onResponseFinished(detail);
+    if (pendingPersona) {
+      const wanted = pendingPersona;
+      pendingPersona = null;
+      if (wanted !== currentPersonaId()) applyPersona(wanted);
+    }
   });
   c.addEventListener("error", (e) => {
     const detail = /** @type {CustomEvent<{ error: unknown }>} */ (e).detail;

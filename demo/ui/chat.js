@@ -90,6 +90,8 @@ export class ChatView {
     /** A tool ran during the current thinking spell: the reply is still coming
      *  in a follow-up response, so keep the dots across the response boundary. */
     this._thinkingSawTool = false;
+    /** Label for assistant bubbles and history rows: the speaking persona's name. */
+    this._assistantName = "Assistant";
     /** Tool chips shown during the current reply; dismissed when its text arrives.
      *  @type {HTMLElement[]} */
     this._toolBubbles = [];
@@ -154,11 +156,16 @@ export class ChatView {
    * @param {{ container: string, prefix: string, role: "user"|"assistant", text: string, partial?: boolean }} o
    * @returns {HTMLElement}
    */
+  /** @param {string} name */
+  setAssistantName(name) {
+    this._assistantName = (name || "").trim() || "Assistant";
+  }
+
   _buildMessageEl({ container, prefix, role, text, partial = false }) {
     text = stripVocalCues(text);
     const el = document.createElement("div");
     el.className = `${container} ${role}`;
-    const label = role === "user" ? "You" : "Assistant";
+    const label = role === "user" ? "You" : this._assistantName;
     el.innerHTML = `<div class="${prefix}-role">${label}</div><div class="${prefix}-body${partial ? " partial" : ""}"${text ? "" : " hidden"}>${escHtml(text)}</div>`;
     return el;
   }
