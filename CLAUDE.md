@@ -412,7 +412,7 @@ _Update at the end of a session that changed something._
   hits cached 24 h, misses 1 h. Sorts: rating (Bayesian, 20 phantom
   reviews at 4.0, so a 5.0 from one review does not top the list), health
   (unscored last), distance, price; filters open_now / min_rating /
-  min_health_score. Live from Johns Creek: 6/6 Thai places matched to
+  min_health_score. Live from the home area: 6/6 Thai places matched to
   scores, 1.3 s cold, 0.6 s cached; Bob reads out rating + score. GLM tends
   to invent filters and call twice; the tool description now says one call
   and no filters unless asked (1 call on the plain question after that).
@@ -437,7 +437,7 @@ _Update at the end of a session that changed something._
   find_restaurants first, else a portal name-prefix search; every word of
   the asked name must appear in the portal name (a made-up "Nowhere Grill"
   no longer matches "Nowhere Bar"); `area` matches street, city or zip in
-  the portal address (the portal files Johns Creek places under Duluth or
+  the portal address (the portal files home-area places under neighbouring mailing cities such as Duluth or
   Suwanee mailing cities, so the model is told to pass the street from an
   earlier result). Text: last N scores with dates and purpose, a trend
   word, the latest violations by points with repeat flags, and a count of
@@ -572,7 +572,12 @@ _Update at the end of a session that changed something._
   mini; 9 server-side agent layer (personas, tools, hand-off choreography
   out of the page); 10 Dograh + Telnyx; 11 Sam places calls (disclosure
   line); 12 Teams bot via Azure Communication Services; 13 on-device wake
-  word. Deferred: local prompt cache; opening hours at a later time;
+  word. Before the Mac mini goes public-facing (item 4/5): move the code to
+  a private repository. The fork cannot be made private on GitHub; create a
+  new private repo, push this history there, switch `origin` on both Macs,
+  keep the public fork only to track upstream. Note the upstream licence
+  when the product diverges (attribution stays).
+  Deferred: local prompt cache; opening hours at a later time;
   context cost control (added 2026-09-15: each turn resends the whole
   history, ~7k input tokens by the end of a long session; the upstream
   compactor in `LLM/compaction_prompt.py` is already wired into both LLM
