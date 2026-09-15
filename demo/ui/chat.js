@@ -159,6 +159,16 @@ export class ChatView {
   /** @param {string} name */
   setAssistantName(name) {
     this._assistantName = (name || "").trim() || "Assistant";
+    // A thinking placeholder created before a persona switch would keep the
+    // old name when the reply fills it in; relabel it now.
+    const live = this._thinkingBubble;
+    if (live?.isConnected && !live.classList.contains("out")) this._relabel(live);
+  }
+
+  /** @param {HTMLElement} el */
+  _relabel(el) {
+    const role = el.querySelector(".bubble-role, .hist-role");
+    if (role) role.textContent = this._assistantName;
   }
 
   _buildMessageEl({ container, prefix, role, text, partial = false }) {
@@ -684,6 +694,7 @@ export class ChatView {
     this._thinkingSawTool = false;
     if (!el?.isConnected || el.classList.contains("out")) return null;
     el.classList.remove("thinking");
+    this._relabel(el);
     this._updateBubbleText(el, text);
     return el;
   }
