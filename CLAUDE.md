@@ -77,6 +77,13 @@ keeps it in `~/.zshrc`; never in the repo or in chat) the demo server's
 Pro allowance) and offers `/api/fetch` for whole pages; without it, Serper via
 `SERPER_API_KEY` or the user's own Serper key from Settings.
 
+Restaurant search (`find_restaurants` tool): with `GOOGLE_PLACES_API_KEY` in
+the environment (Michael's Google Cloud project; key restricted to Places API
+(New), per-day quotas, budget alerts) the demo server's `/api/restaurants`
+combines Google Places (Pro-tier fields only: rating, price, address, location)
+with Georgia DPH health scores from ga.healthinspections.us (`demo/ga_health.py`,
+an async port of `~/Documents/Apps/gahealth/ga_health_scores.py`).
+
 Browser demo (port 7860), in a second terminal:
 
 ```bash
@@ -141,7 +148,7 @@ _Update at the end of a session that changed something._
   model / Warming up the voice; 25 s fail-safe), and assistant bubbles now
   stay while speaker output is audible (client emits `output-level`; chat
   view bumps the bubble's expiry, fades 3 s after the last word). Assets are
-  cache-busted with `?v=audio-24k-v32` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
+  cache-busted with `?v=audio-24k-v33` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
   editing demo JS/CSS or browsers keep the old files.
 - 2026-09-14 (tools): the LLM handler now parses the model's native
   `<tool_call><function=…><parameter=…>` XML blocks as well as the prompted
@@ -388,6 +395,25 @@ _Update at the end of a session that changed something._
   chat-completions test for the system prompt, `demo/tests/local-tools.test.mjs`
   (pytest-wrapped). Live: correct date/time, Christmas = 101 days via the
   tool, held firm against a wrong "sixty", weekday and arithmetic right.
+- 2026-09-15 (restaurants): `demo/restaurants.py` + `/api/restaurants`
+  + page tool `find_restaurants` (Settings > Tools > Restaurants; result
+  cards in the history with a health-score badge and a maps link). Flow:
+  Places text search biased to the browser's geolocation (asked on first
+  use, cached 5 min, never stored; without it the query's own area is used),
+  cuisine words map to Places types with strict filtering (so "Thai, open
+  now" at breakfast returns nothing rather than any open cafe), results
+  beyond twice the radius dropped, then a health lookup per place (3 in
+  parallel): the portal's keyword search is a name-prefix match and its
+  city filter uses mailing cities, so lookups use the first two significant
+  name words without a city and match on street number + street word;
+  hits cached 24 h, misses 1 h. Sorts: rating (Bayesian, 20 phantom
+  reviews at 4.0, so a 5.0 from one review does not top the list), health
+  (unscored last), distance, price; filters open_now / min_rating /
+  min_health_score. Live from Johns Creek: 6/6 Thai places matched to
+  scores, 1.3 s cold, 0.6 s cached; Bob reads out rating + score. GLM tends
+  to invent filters and call twice; the tool description now says one call
+  and no filters unless asked (1 call on the plain question after that).
+  Tests: `tests/test_demo_restaurants.py` (fakes for Places and the portal).
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache

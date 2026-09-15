@@ -2881,3 +2881,18 @@ body.cam-on .footer {
   opacity: 0.8;
   padding: 4px 0;
 }
+
+/* ── Restaurant result cards (find_restaurants tool) ─────────────────────── */
+.rest-list { list-style: none; margin: 8px 0 4px; padding: 0; display: grid; gap: 6px; }
+.rest-card { display: flex; gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-elev-2); }
+.rest-score { flex: 0 0 auto; min-width: 38px; padding: 6px 0; text-align: center; border-radius: 8px; font-family: var(--font-mono); font-weight: 600; font-size: 14px; }
+.rest-score.good { background: color-mix(in srgb, var(--success) 22%, transparent); color: var(--success); }
+.rest-score.fair { background: color-mix(in srgb, var(--processing) 22%, transparent); color: var(--processing); }
+.rest-score.poor { background: color-mix(in srgb, var(--error) 22%, transparent); color: var(--error); }
+.rest-score.none { background: var(--bg-elev); color: var(--text-faint); }
+.rest-main { min-width: 0; }
+.rest-name { color: var(--text); font-weight: 600; text-decoration: none; }
+.rest-name:hover { text-decoration: underline; }
+.rest-meta { color: var(--text-dim); font-size: 12px; margin-top: 2px; }
+.rest-count { color: var(--text-faint); }
+.rest-addr { color: var(--text-faint); font-size: 12px; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

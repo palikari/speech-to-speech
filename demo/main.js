@@ -17,10 +17,10 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v32";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v33";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v32";
-import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v32";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v33";
+import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v33";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -55,7 +55,8 @@ const PERSONA_HANDOFF =
   + " For how many days until or since a date, what date is some days away, which weekday a date"
   + " falls on, or any arithmetic, call date_math or calculate and read out the result; never"
   + " count days or do sums in your head, and if the result contradicts something you said"
-  + " earlier, the tool is right."
+  + " earlier, the tool is right. For where to eat, call find_restaurants: it returns Google"
+  + " ratings and official health inspection scores; read out the top two or three with both."
   + " When the user asks for a poem, song, story, list or explanation, that request overrides"
   + " the short-reply rule: give the whole thing in one reply, every line of it, without a"
   + " preamble and without waiting to be asked for more. Never promise something for later."
@@ -192,6 +193,30 @@ const TOOL_DEFS = {
       required: ["query"],
     },
   },
+  find_restaurants: {
+    type: "function",
+    name: "find_restaurants",
+    description:
+      "Find restaurants with Google ratings, price level, distance and the official Georgia health " +
+      "inspection score for each. Use it for any where-to-eat question. The user's location is added " +
+      "automatically when they allow it, so put only the cuisine, name or area in the query " +
+      "(e.g. \"Thai restaurants\" or \"pizza in Alpharetta\"). One call per question. Leave " +
+      "open_now, min_rating and min_health_score unset unless the user asked for that; the default " +
+      "sort already favours well-reviewed places. Read out the top two or three with their rating " +
+      "and health score; the full list is shown on screen.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Cuisine, dish, restaurant name, or area." },
+        sort_by: { type: "string", enum: ["rating", "health", "distance", "price"], description: "Default rating." },
+        open_now: { type: "boolean", description: "Only places open right now." },
+        min_rating: { type: "number", description: "Minimum Google rating, e.g. 4.3." },
+        min_health_score: { type: "integer", description: "Minimum health inspection score, e.g. 90." },
+        max_results: { type: "integer", description: "How many to return, 1-8 (default 5)." },
+      },
+      required: ["query"],
+    },
+  },
   web_fetch: {
     type: "function",
     name: "web_fetch",
@@ -273,7 +298,7 @@ function saveSettings(s) {
   localStorage.setItem(STORAGE_KEYS.audioOutputId, s.audioOutputId || "");
 }
 
-/** @returns {{ web_search: boolean, camera_snapshot: boolean }} */
+/** @returns {{ web_search: boolean, camera_snapshot: boolean, find_restaurants: boolean }} */
 function loadTools() {
   try {
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEYS.tools) || "{}");
@@ -284,9 +309,10 @@ function loadTools() {
     return {
       web_search: raw.web_search ?? true,
       camera_snapshot: raw.camera_snapshot ?? true,
+      find_restaurants: raw.find_restaurants ?? true,
     };
   } catch {
-    return { web_search: true, camera_snapshot: true };
+    return { web_search: true, camera_snapshot: true, find_restaurants: true };
   }
 }
 
@@ -366,6 +392,9 @@ const toolsClose = $("#tools-close");
 const toolWebSwitch = $("#tool-web");
 /** @type {HTMLInputElement} */
 const toolCamSwitch = $("#tool-cam");
+const toolRestSwitch = /** @type {HTMLInputElement} */ ($("#tool-rest"));
+const toolRestRow = $("#tool-rest-row");
+const toolRestHint = $("#tool-rest-hint");
 /** @type {HTMLElement} */
 const toolWebRow = $("#tool-web-row");
 /** @type {HTMLElement} */
@@ -470,6 +499,8 @@ let toolsEnabled = loadTools();
 let serverSearchKey = false;
 /** The server can read whole pages (Ollama search key configured). */
 let serverFetch = false;
+/** The server can search restaurants (Google Places key configured). */
+let serverRestaurants = false;
 // A user-supplied key (fallback when the deploy has none). localStorage only.
 let userSearchKey = localStorage.getItem(STORAGE_KEYS.searchKey) || "";
 /** @type {MediaStream | null} */
@@ -713,6 +744,7 @@ function activeToolDefs() {
     if (serverFetch) defs.push(TOOL_DEFS.web_fetch);
   }
   if (toolsEnabled.camera_snapshot) defs.push(TOOL_DEFS.camera_snapshot);
+  if (toolsEnabled.find_restaurants && serverRestaurants) defs.push(TOOL_DEFS.find_restaurants);
   return defs;
 }
 
@@ -1032,6 +1064,12 @@ function syncToolsUi() {
   toolWebSwitch.disabled = !avail;
   toolWebRow.classList.toggle("disabled", !avail);
   toolCamSwitch.checked = toolsEnabled.camera_snapshot;
+  toolRestSwitch.checked = toolsEnabled.find_restaurants && serverRestaurants;
+  toolRestSwitch.disabled = !serverRestaurants;
+  toolRestRow.classList.toggle("disabled", !serverRestaurants);
+  toolRestHint.textContent = serverRestaurants
+    ? "Google ratings plus official Georgia health scores. Your location is used only when you allow it."
+    : "Not configured on this server (needs a Google Places key).";
 
   if (serverSearchKey) {
     // Key lives server-side: show it as configured, never expose it.
@@ -1050,6 +1088,12 @@ function syncToolsUi() {
 }
 
 toolsBtn.addEventListener("click", () => { syncToolsUi(); toolsModal.showModal(); });
+
+toolRestSwitch.addEventListener("change", () => {
+  toolsEnabled.find_restaurants = toolRestSwitch.checked;
+  saveTools();
+  pushToolsToSession();
+});
 toolsClose.addEventListener("click", () => toolsModal.close());
 toolsModal.addEventListener("click", (e) => {
   if (e.target === toolsModal) toolsModal.close();
@@ -1238,7 +1282,7 @@ function flashPreview() {
  * Run the function the model called. The Agents SDK preserves call order and
  * submits the returned value to the session.
  * @param {string} name @param {string} argsJson @param {string} callId
- * @returns {Promise<{ output: string, image?: string }>}
+ * @returns {Promise<{ output: string, image?: string, cards?: unknown[] }>}
  */
 async function runTool(name, argsJson, callId) {
   if (!client) return { output: "" };
@@ -1248,7 +1292,7 @@ async function runTool(name, argsJson, callId) {
   if (DEBUG) console.debug(`[tool] run name=${name} callId=${JSON.stringify(callId)} args=${argsJson}`);
   if (!callId) console.warn("[tool] empty call_id — the backend didn't tag the call, can't return a function_call_output");
 
-  /** @type {{ output: string, image?: string }} */
+  /** @type {{ output: string, image?: string, cards?: unknown[] }} */
   let result = { output: "" };
   try {
     if (name === "switch_persona") {
@@ -1276,6 +1320,9 @@ async function runTool(name, argsJson, callId) {
     } else if (name === "web_fetch") {
       const url = typeof args.url === "string" ? args.url : "";
       result.output = await execWebFetch(url);
+    } else if (name === "find_restaurants") {
+      const found = await execFindRestaurants(args);
+      result = { output: found.text, cards: found.results };
     } else if (name === "date_math" || name === "calculate") {
       result.output = runLocalTool(name, args) ?? `Unknown tool: ${name}`;
     } else if (name === "camera_snapshot") {
@@ -1327,6 +1374,53 @@ async function execWebSearch(query) {
     lines.push(`- ${r.title}: ${r.snippet} (${r.url})`);
   }
   return lines.length > 1 ? lines.join("\n") : `${lines[0]}\nNo results found.`;
+}
+
+/** The user's position, if they allow it: cached a few minutes, never stored.
+ *  @returns {Promise<{ lat: number, lng: number } | null>} */
+let cachedPosition = /** @type {{ at: number, lat: number, lng: number } | null} */ (null);
+async function currentPosition() {
+  if (cachedPosition && Date.now() - cachedPosition.at < 5 * 60 * 1000) return { lat: cachedPosition.lat, lng: cachedPosition.lng };
+  if (!("geolocation" in navigator)) return null;
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        cachedPosition = { at: Date.now(), lat: pos.coords.latitude, lng: pos.coords.longitude };
+        resolve({ lat: cachedPosition.lat, lng: cachedPosition.lng });
+      },
+      (err) => {
+        if (DEBUG) console.debug("[restaurants] no position:", err?.message);
+        resolve(null);
+      },
+      { timeout: 6000, maximumAge: 5 * 60 * 1000 },
+    );
+  });
+}
+
+/** @param {Record<string, unknown>} args @returns {Promise<{ text: string, results: unknown[] }>} */
+async function execFindRestaurants(args) {
+  const query = typeof args.query === "string" ? args.query.trim() : "";
+  if (!query) return { text: "No query provided.", results: [] };
+  const pos = await currentPosition();
+  /** @type {Record<string, unknown>} */
+  const body = { query };
+  if (pos) { body.lat = pos.lat; body.lng = pos.lng; }
+  for (const k of ["sort_by", "open_now", "min_rating", "min_health_score", "max_results"]) {
+    if (args[k] !== undefined && args[k] !== null && args[k] !== "") body[k] = args[k];
+  }
+  const res = await fetch("api/restaurants", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    let detail = String(res.status);
+    try { const j = await res.json(); if (j.detail) detail = j.detail; } catch {}
+    throw new Error(`restaurant search error (${detail})`);
+  }
+  const json = await res.json();
+  const note = pos ? "" : "\n(Location not shared: results are for the area named in the query.)";
+  return { text: `${json.text}${note}`, results: Array.isArray(json.results) ? json.results : [] };
 }
 
 /** @param {string} url @returns {Promise<string>} */
@@ -1383,6 +1477,7 @@ async function fetchConfig() {
       renderBuildStamp(json.build);
       serverSearchKey = !!json.search;
       serverFetch = !!json.fetch;
+      serverRestaurants = !!json.restaurants;
       lbMode = !!json.lb;
       // Lock to LB mode only when the deploy reports a load balancer.
       allowDirect = json.allowDirect ?? !lbMode;
@@ -1923,7 +2018,7 @@ async function doStart(audioContext = null) {
     executeTool: async ({ name, arguments: args, callId }) => {
       if (name !== "switch_persona") chat.onToolCall(name); // the switch announces itself
       const result = await runTool(name, args, callId);
-      if (client === c) chat.onToolResult(name, args, result.output, result.image);
+      if (client === c) chat.onToolResult(name, args, result.output, result.image, result.cards);
       return result;
     },
     ...(audioContext ? { audioContext } : {}),

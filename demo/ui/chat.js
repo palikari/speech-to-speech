@@ -18,6 +18,28 @@
 
 import { $, escHtml, DEBUG } from "./dom.js";
 
+/** Result cards for tools that return structured rows (find_restaurants).
+ *  @param {string} name @param {unknown} cards */
+function renderToolCards(name, cards) {
+  if (name !== "find_restaurants" || !Array.isArray(cards) || cards.length === 0) return "";
+  const price = (n) => (typeof n === "number" ? "$".repeat(Math.max(1, n)) : "");
+  const grade = (s) => (s >= 90 ? "good" : s >= 80 ? "fair" : "poor");
+  const rows = cards.map((c) => {
+    const r = /** @type {any} */ (c);
+    const rating = typeof r.rating === "number" ? `★ ${r.rating.toFixed(1)} <span class="rest-count">(${r.rating_count ?? 0})</span>` : "";
+    const dist = typeof r.distance_mi === "number" ? `${r.distance_mi.toFixed(1)} mi` : "";
+    const score = typeof r.health_score === "number"
+      ? `<span class="rest-score ${grade(r.health_score)}" title="Georgia DPH inspection ${escHtml(r.health_date || "")}">${r.health_score}</span>`
+      : `<span class="rest-score none" title="No inspection on file">—</span>`;
+    const title = r.maps_url
+      ? `<a class="rest-name" href="${escHtml(r.maps_url)}" target="_blank" rel="noopener">${escHtml(r.name || "")}</a>`
+      : `<span class="rest-name">${escHtml(r.name || "")}</span>`;
+    const meta = [rating, price(r.price_level), dist, r.open_now ? "open now" : ""].filter(Boolean).join(" · ");
+    return `<li class="rest-card">${score}<div class="rest-main">${title}<div class="rest-meta">${meta}</div><div class="rest-addr">${escHtml(String(r.address || "").split(",")[0])}</div></div></li>`;
+  });
+  return `<ul class="rest-list">${rows.join("")}</ul>`;
+}
+
 // How long an assistant bubble stays after the last audible word.
 const ASSISTANT_LINGER_AFTER_SPEECH_MS = 3000;
 // Breeze vocal cues the model may emit; spoken, but not worth showing as text.
@@ -394,7 +416,7 @@ export class ChatView {
    * has run, so the expandable toggle carries BOTH the call input and its result.
    * @param {string} name @param {string} argsJson @param {string} output
    */
-  _appendHistTool(name, argsJson, output) {
+  _appendHistTool(name, argsJson, output, cards) {
     const empty = this._chatHistory.querySelector(".chat-empty");
     if (empty) empty.remove();
     let pretty = argsJson;
@@ -408,6 +430,7 @@ export class ChatView {
         <span class="hist-tool-name">${escHtml(name)}</span>
         <svg class="hist-tool-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
       </button>
+      ${renderToolCards(name, cards)}
       <div class="hist-tool-body">
         <div class="hist-tool-label">Input</div>
         <div class="hist-tool-block">${escHtml(pretty)}</div>
@@ -784,8 +807,8 @@ export class ChatView {
 
   /** The tool finished — append its call+result row (and any captured image).
    *  @param {string} name @param {string} argsJson @param {string} output @param {string} [image] */
-  onToolResult(name, argsJson, output, image) {
-    this._appendHistTool(name, argsJson, output);
+  onToolResult(name, argsJson, output, image, cards) {
+    this._appendHistTool(name, argsJson, output, cards);
     if (image) this._appendHistImage(image); // show the captured frame below the call
     this._markUnread();
   }

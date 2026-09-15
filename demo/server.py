@@ -53,6 +53,7 @@ from urllib.parse import urlsplit, urlunsplit
 import auth
 import httpx
 import limiter
+import restaurants
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -260,6 +261,8 @@ def config():
         "searchProvider": "ollama" if OLLAMA_KEY else ("serper" if SERPER_KEY else ""),
         # Whole-page reads need Ollama's key.
         "fetch": bool(OLLAMA_KEY),
+        # Restaurant search (Google Places + Georgia health scores) needs a Places key.
+        "restaurants": bool(restaurants.PLACES_KEY),
         "lb": bool(LOAD_BALANCER_URL),
         "allowDirect": not LOAD_BALANCER_URL,
         # Deploy-pinned direct s2s URL (empty when unset). Not a secret: the
@@ -402,6 +405,24 @@ async def search(req: SearchRequest):
         " | ".join(f"{r['title'][:60]}: {r['snippet'][:120]}" for r in results[:3]) or "no results",
     )
     return JSONResponse({"query": query, "answer": answer, "results": results, "provider": "serper"})
+
+
+@app.post("/api/restaurants")
+async def find_restaurants(req: restaurants.RestaurantsRequest):
+    """Restaurants for the model's find_restaurants tool: Google Places candidates
+    with ratings and price, Georgia DPH health scores, sorted as asked."""
+    if not (req.query or "").strip():
+        raise HTTPException(status_code=400, detail="Empty query.")
+    if not restaurants.PLACES_KEY:
+        raise HTTPException(status_code=503, detail="Restaurant search is not configured.")
+    try:
+        return JSONResponse(await restaurants.find_restaurants(req))
+    except httpx.RequestError as exc:
+        logger.warning("restaurant search unreachable: %r", exc)
+        raise HTTPException(status_code=502, detail="Restaurant search provider unreachable.")
+    except RuntimeError as exc:
+        logger.warning("restaurant search failed: %s", exc)
+        raise HTTPException(status_code=502, detail=str(exc)[:200])
 
 
 @app.post("/api/fetch")
