@@ -24,4 +24,5 @@ one-shot near -25 dB):
 - `villain/` (Professor Karloff): `bed.mp3` (mad scientist's lab, 2 min,
   +30 dB from the master), `electricity-sparks.wav` (Jacob's ladder, first
   8 s), `potion-bubbling.wav` (8 s), `ray-gun.wav` (9 s, the "Power Mad Glitch" master),
-  `monster-groan.wav` (3.5 s), `crazy-scientist.wav` (4 s).
+  `monster-groan.wav` (3.5 s), `electric-hum.wav` (4 s, sci-fi hum like an
+  overdriven theremin; the "Crazy Scientist 03" master).
