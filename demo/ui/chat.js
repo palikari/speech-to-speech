@@ -37,7 +37,8 @@ function renderDetailsCard(cards) {
   const title = d.maps_url
     ? `<a class="rest-name" href="${escHtml(d.maps_url)}" target="_blank" rel="noopener">${escHtml(d.name)}</a>`
     : `<span class="rest-name">${escHtml(d.name)}</span>`;
-  return `<div class="det-card">${title} ${open}<div class="rest-addr">${escHtml(String(d.address || "").split(",")[0])}</div>${phone}${site}${hours}${placeActions({ ...d, website: "", phone: "" })}</div>`;
+  const rating = typeof d.rating === "number" ? `<div class="rest-meta">★ ${d.rating.toFixed(1)} <span class="rest-count">(${d.rating_count ?? 0} reviews)</span></div>` : "";
+  return `<div class="det-card">${title} ${open}${rating}<div class="rest-addr">${escHtml(String(d.address || ""))}</div>${phone}${site}${hours}${placeActions({ ...d, website: "", phone: "" })}</div>`;
 }
 
 /** One restaurant's recent inspections: a score timeline plus the latest violations.

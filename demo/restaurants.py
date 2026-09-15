@@ -143,6 +143,10 @@ class RestaurantsRequest(BaseModel):
     # A place to search around when the browser shared no coordinates (the
     # user's home address from their profile); geocoded once and cached.
     near: Optional[str] = None
+    # A town, landmark or address the user asked about that is not where they
+    # are ("near the Little White House in Warm Springs"): geocoded and used as
+    # the search centre instead of their location.
+    area: Optional[str] = None
     radius_m: int = Field(default=DEFAULT_RADIUS_M, ge=500, le=50000)
     open_now: bool = False
     sort_by: str = "rating"
@@ -352,7 +356,10 @@ def format_line(i: int, r: dict) -> str:
 
 
 def format_text(req: RestaurantsRequest, results: list[dict]) -> str:
-    where = " near home" if req.near and req.lat is not None else " near you" if req.lat is not None else ""
+    if req.area:
+        where = f" near {req.area}" if req.lat is not None else f" for {req.area!r} (could not place it on the map)"
+    else:
+        where = " near home" if req.near and req.lat is not None else " near you" if req.lat is not None else ""
     head = f"Restaurants for {req.query!r}{where}, sorted by {req.sort_by}"
     filters = []
     if req.open_now:
@@ -389,6 +396,8 @@ DETAILS_FIELD_MASK = ",".join(
         "regularOpeningHours",
         "currentOpeningHours",
         "googleMapsUri",
+        "rating",
+        "userRatingCount",
     )
 )
 RECENT_PLACES_TTL_S = 3600
@@ -437,6 +446,8 @@ def parse_details(d: dict) -> dict:
         "website": d.get("websiteUri") or "",
         "open_now": (d.get("currentOpeningHours") or {}).get("openNow"),
         "hours": hours,
+        "rating": d.get("rating"),
+        "rating_count": d.get("userRatingCount"),
         "maps_url": d.get("googleMapsUri", ""),
         **place_links(d.get("id", ""), (d.get("displayName") or {}).get("text", ""), d.get("formattedAddress", "")),
     }
@@ -445,6 +456,8 @@ def parse_details(d: dict) -> dict:
 def format_details(det: dict, today: str) -> str:
     street = det["address"].split(",")[0]
     parts = [f"{det['name']} ({street})"]
+    if det.get("rating") is not None:
+        parts.append(f"rated {det['rating']} from {det.get('rating_count') or 0} reviews")
     parts.append(f"phone {det['phone']}" if det["phone"] else "no phone number listed")
     if det["website"]:
         site = re.sub(r"^https?://(www\.)?", "", det["website"]).rstrip("/")
@@ -672,7 +685,12 @@ async def find_restaurants(req: RestaurantsRequest) -> dict:
     sort_by = req.sort_by if req.sort_by in SORTS else "rating"
     req = req.model_copy(update={"sort_by": sort_by})
     async with httpx.AsyncClient() as client:
-        if (req.lat is None or req.lng is None) and req.near:
+        if req.area:
+            # The asked-about area wins over the user's own location; without a
+            # geocode hit the search runs unbiased on the query text alone.
+            loc = await geocode(client, req.area)
+            req = req.model_copy(update={"lat": loc[0], "lng": loc[1]} if loc else {"lat": None, "lng": None})
+        elif (req.lat is None or req.lng is None) and req.near:
             loc = await geocode(client, req.near)
             if loc:
                 req = req.model_copy(update={"lat": loc[0], "lng": loc[1]})

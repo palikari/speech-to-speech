@@ -17,11 +17,11 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v60";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v61";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v60";
-import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v60";
-import { Ambience } from "./ui/ambience.js?v=audio-24k-v60";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v61";
+import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v61";
+import { Ambience } from "./ui/ambience.js?v=audio-24k-v61";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -56,8 +56,11 @@ const PERSONA_HANDOFF =
   + " For how many days until or since a date, what date is some days away, which weekday a date"
   + " falls on, or any arithmetic, call date_math or calculate and read out the result; never"
   + " count days or do sums in your head, and if the result contradicts something you said"
-  + " earlier, the tool is right. For where to eat, call find_restaurants: it returns Google"
-  + " ratings and official health inspection scores; read out the top two or three with both."
+  + " earlier, the tool is right. For where to eat, anywhere, call find_restaurants (set area for"
+  + " a place that is not where the user is): it returns Google ratings and official health"
+  + " inspection scores; read out the top two or three with both. For anything about one"
+  + " particular restaurant, call restaurant_details, which shows a card; never web search for"
+  + " restaurants unless those tools find nothing."
   + " For one place's inspection history, scores over time or violations, call"
   + " restaurant_inspections and read out the recent scores with their dates. For a phone number,"
   + " website or opening hours, call restaurant_details. Call place_call only when the user asks"
@@ -226,16 +229,19 @@ const TOOL_DEFS = {
     name: "find_restaurants",
     description:
       "Find restaurants with Google ratings, price level, distance and the official Georgia health " +
-      "inspection score for each. Use it for any where-to-eat question. The user's location is added " +
-      "automatically when they allow it, so put only the cuisine, name or area in the query " +
-      "(e.g. \"Thai restaurants\" or \"pizza in Alpharetta\"). One call per question. Leave " +
+      "inspection score for each. Use it for any where-to-eat question, anywhere: never web search " +
+      "for restaurants. The user's own location is used unless you set area, so for a place away " +
+      "from them (a town, a landmark, a trip) put that town or landmark in area (e.g. \"Warm " +
+      "Springs, GA\" or \"the Little White House, Warm Springs\") and only the cuisine or kind of " +
+      "place in the query (e.g. \"Thai restaurants\" or \"lunch\"). One call per question. Leave " +
       "open_now, min_rating and min_health_score unset unless the user asked for that; the default " +
       "sort already favours well-reviewed places. Read out the top two or three with their rating " +
       "and health score; the full list is shown on screen.",
     parameters: {
       type: "object",
       properties: {
-        query: { type: "string", description: "Cuisine, dish, restaurant name, or area." },
+        query: { type: "string", description: "Cuisine, dish, kind of place, or restaurant name." },
+        area: { type: "string", description: "Town, landmark or address to search around when it is not where the user is. Omit for near the user." },
         sort_by: { type: "string", enum: ["rating", "health", "distance", "price"], description: "Default rating." },
         open_now: { type: "boolean", description: "Only places open right now." },
         min_rating: { type: "number", description: "Minimum Google rating, e.g. 4.3." },
@@ -249,14 +255,16 @@ const TOOL_DEFS = {
     type: "function",
     name: "restaurant_details",
     description:
-      "Phone number, website, opening hours and whether it is open right now, for one restaurant " +
-      "(from an earlier find_restaurants result, or by name). Use it when the user asks for a " +
-      "number, a website, hours, or whether a place is open.",
+      "Everything about one specific restaurant, anywhere: Google rating and review count, address, " +
+      "phone number, website, opening hours and whether it is open right now, shown as a card. Call " +
+      "it whenever the user asks about a particular restaurant by name (what it is like, details, a " +
+      "number, a website, hours, open now), from an earlier result or by name plus its town. Prefer " +
+      "it over web search; search the web only if it finds nothing.",
     parameters: {
       type: "object",
       properties: {
         name: { type: "string", description: "Restaurant name." },
-        area: { type: "string", description: "Street, city or zip if there are several locations." },
+        area: { type: "string", description: "Town, street or zip: always when the place was not in an earlier result, or when a name has several locations." },
       },
       required: ["name"],
     },
@@ -1823,11 +1831,16 @@ async function currentPosition() {
 async function execFindRestaurants(args) {
   const query = typeof args.query === "string" ? args.query.trim() : "";
   if (!query) return { text: "No query provided.", results: [] };
-  const pos = await currentPosition();
+  const area = typeof args.area === "string" ? args.area.trim() : "";
   /** @type {Record<string, unknown>} */
   const body = { query };
-  if (pos) { body.lat = pos.lat; body.lng = pos.lng; }
-  else if (profile.address) body.near = profile.address; // home, when location is not shared
+  if (area) {
+    body.area = area; // the asked-about place wins over where the user is
+  } else {
+    const pos = await currentPosition();
+    if (pos) { body.lat = pos.lat; body.lng = pos.lng; }
+    else if (profile.address) body.near = profile.address; // home, when location is not shared
+  }
   for (const k of ["sort_by", "open_now", "min_rating", "min_health_score", "max_results"]) {
     if (args[k] !== undefined && args[k] !== null && args[k] !== "") body[k] = args[k];
   }

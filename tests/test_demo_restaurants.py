@@ -418,3 +418,59 @@ async def test_home_address_is_geocoded_when_no_location_was_shared(monkeypatch)
         and calls[1]["locationBias"]["circle"]["center"]["latitude"] == 34.07
     )
     assert out["results"][0]["distance_mi"] is not None and "near home" in out["text"]
+
+
+@pytest.mark.asyncio
+async def test_an_asked_about_area_overrides_the_users_location(monkeypatch):
+    """ "Restaurants near the Little White House" from 100 miles away: the area
+    is geocoded and becomes the search centre and the distance fence, so the
+    user's own coordinates neither bias nor fence the results."""
+    calls = []
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def post(self, url, headers=None, json=None, timeout=None):
+            calls.append(json)
+            if headers["X-Goog-FieldMask"] == "places.location":
+                return httpx.Response(200, json={"places": [{"location": {"latitude": 32.88, "longitude": -84.68}}]})
+            return httpx.Response(
+                200, json={"places": [_place("Bulloch House", "70", "Broad St", lat=32.89, lng=-84.68, rating=4.4)]}
+            )
+
+        async def get(self, url, headers=None, timeout=None):
+            return httpx.Response(200, json=[])
+
+    monkeypatch.setattr(restaurants, "PLACES_KEY", "places-key")
+    monkeypatch.setattr(restaurants.httpx, "AsyncClient", FakeClient)
+    monkeypatch.setattr(restaurants, "health_cache", restaurants.HealthCache())
+    restaurants._geocode_cache.clear()
+    out = await restaurants.find_restaurants(
+        restaurants.RestaurantsRequest(query="lunch", lat=34.03, lng=-84.20, area="Warm Springs, GA")
+    )
+    assert calls[0]["textQuery"] == "Warm Springs, GA"
+    assert calls[1]["locationBias"]["circle"]["center"]["latitude"] == 32.88
+    assert len(out["results"]) == 1 and out["results"][0]["distance_mi"] < 2
+    assert "near Warm Springs, GA" in out["text"]
+
+
+def test_details_carry_rating_and_review_count():
+    det = restaurants.parse_details(
+        {
+            "id": "p1",
+            "displayName": {"text": "Bulloch House"},
+            "formattedAddress": "70 Broad St, Warm Springs, GA 31830",
+            "rating": 4.4,
+            "userRatingCount": 1650,
+            "regularOpeningHours": {"weekdayDescriptions": ["Tuesday: 11:00 AM - 2:30 PM"]},
+        }
+    )
+    assert det["rating"] == 4.4 and det["rating_count"] == 1650
+    assert "rated 4.4 from 1650 reviews" in restaurants.format_details(det, "Tuesday")

@@ -148,7 +148,7 @@ _Update at the end of a session that changed something._
   model / Warming up the voice; 25 s fail-safe), and assistant bubbles now
   stay while speaker output is audible (client emits `output-level`; chat
   view bumps the bubble's expiry, fades 3 s after the last word). Assets are
-  cache-busted with `?v=audio-24k-v60` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
+  cache-busted with `?v=audio-24k-v61` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
   editing demo JS/CSS or browsers keep the old files.
 - 2026-09-14 (tools): the LLM handler now parses the model's native
   `<tool_call><function=…><parameter=…>` XML blocks as well as the prompted
@@ -641,6 +641,23 @@ _Update at the end of a session that changed something._
   buffered; an aside over 240 chars or containing a newline is released.
   Tests: `tests/test_asides.py`, two chat-completions streaming tests. The
   raw content still goes into the history as the model wrote it.
+- 2026-09-15 (restaurants away from home): Sam answered "restaurants near
+  the Little White House" and "how about the Bulloch House?" from web
+  searches, so no cards. Two causes: the find_restaurants description framed
+  the tool around the user's location, and the search itself was biased to
+  and fenced around their shared coordinates, so a town 100 miles away
+  would have returned nothing anyway; restaurant_details was described as
+  phone/website/hours only. Now `RestaurantsRequest.area` (tool argument
+  `area`: town, landmark or address) is geocoded and replaces the user's
+  location as the search centre and fence (the page omits its coordinates
+  when area is set; text reads "near <area>"); restaurant_details is the
+  tool for anything about one named restaurant anywhere (rating and review
+  count added to the details fields, text and card, full address on the
+  card), and the persona rule says never to web search for restaurants
+  unless those tools find nothing. Live: Warm Springs search returns the
+  Bulloch House at 0.7 mi with three neighbours; its details carry 4.4 from
+  1707 reviews. Bulloch House has no DPH score on file (Meriwether County
+  is not matched by name in the portal; unverified whether it is listed).
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache
