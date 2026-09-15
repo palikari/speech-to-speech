@@ -157,6 +157,14 @@ class StreamContext(BaseModel):
     # thinking disabled in the chat template; nothing inside it is spoken.
     in_think: bool = False
     think_pending: str = ""
+    # A stray </think> (no opener; the template pre-fills an empty think block,
+    # so the model sometimes treats the reply so far as its reasoning and then
+    # restates it). The restatement is suppressed while it matches what was
+    # already emitted.
+    stray_close_seen: bool = False
+    dedupe_prefix: str = ""  # already-emitted text, whitespace removed
+    dedupe_pos: int = 0
+    dedupe_active: bool = False
     voice: Optional[str] = None  # session voice when the response started
     input_tokens: int = 0
     sentence_batch: list[str] = Field(default_factory=list)
@@ -305,7 +313,7 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
         build_system_prompt = build_voice_system_prompt if wants_audio else build_text_system_prompt
 
         if function_tools and tool_choice != "none":
-            logger.info("Tools offered to the model: %s", ", ".join(t.name for t in function_tools))
+            logger.info("Tools offered to the model: %s", ", ".join(str(t.name) for t in function_tools))
             tool_section = build_tool_system_prompt(function_tools, text_only=not wants_audio)
             full_instructions = build_system_prompt(
                 instructions or "",
@@ -346,6 +354,28 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
         return min(candidates, key=lambda c: c[0]) if candidates else None
 
     @staticmethod
+    def _suppress_restatement(ctx: "StreamContext", text: str) -> str:
+        """After a stray </think>, drop text while it restates what was already emitted."""
+        if ctx.stray_close_seen and not ctx.dedupe_active and not ctx.dedupe_prefix:
+            ctx.dedupe_prefix = "".join(ctx.generated_text.split())
+            ctx.dedupe_pos = 0
+            ctx.dedupe_active = bool(ctx.dedupe_prefix)
+        if not ctx.dedupe_active:
+            return text
+        for i, ch in enumerate(text):
+            if ch.isspace():
+                continue
+            if ctx.dedupe_pos < len(ctx.dedupe_prefix) and ch == ctx.dedupe_prefix[ctx.dedupe_pos]:
+                ctx.dedupe_pos += 1
+                if ctx.dedupe_pos == len(ctx.dedupe_prefix):
+                    ctx.dedupe_active = False  # whole restatement consumed; anything after is new
+                    return text[i + 1 :]
+                continue
+            ctx.dedupe_active = False  # diverged: this is new content
+            return text[i:]
+        return ""
+
+    @staticmethod
     def _strip_think(ctx: "StreamContext", raw_text: str, *, final: bool = False) -> str:
         """Drop ``<think>…</think>`` spans from streamed text, across token boundaries.
 
@@ -372,6 +402,14 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
                 text = text[end + len(THINK_END) :].lstrip()
                 continue
             start = text.find(THINK_START)
+            stray_end = text.find(THINK_END)
+            if stray_end >= 0 and (start < 0 or stray_end < start):
+                # Closing tag without an opener: keep what came before (it was
+                # already streamed), drop the tag, and flag the restatement.
+                out += text[:stray_end]
+                text = text[stray_end + len(THINK_END) :].lstrip()
+                ctx.stray_close_seen = True
+                continue
             if start >= 0:
                 out += text[:start]
                 ctx.in_think = True
@@ -618,6 +656,7 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
             raw_text: str = token.text if hasattr(token, "text") else token
             ctx.raw_generated_text += raw_text
             raw_text = self._strip_think(ctx, raw_text)
+            raw_text = self._suppress_restatement(ctx, raw_text)
             if not raw_text:
                 continue
             clean = raw_text if not wants_audio else remove_unspeechable(raw_text)

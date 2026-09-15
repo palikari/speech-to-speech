@@ -641,3 +641,32 @@ def test_chunks_carry_the_voice_captured_at_response_start():
     ctx = StreamContext(voice="witch")
     chunks, _tools, _remaining = handler._process_printable_text("Hello there. And more", None, [], ctx)
     assert chunks and all(c.voice == "witch" for c in chunks)
+
+
+def _feed_stream(tokens):
+    """Push tokens through the think filter and restatement suppressor like _stream_tokens does."""
+    handler = object.__new__(LanguageModelHandler)
+    ctx = StreamContext()
+    out = ""
+    for t in tokens:
+        piece = handler._strip_think(ctx, t)
+        piece = handler._suppress_restatement(ctx, piece)
+        ctx.generated_text += piece
+        out += piece
+    tail = handler._strip_think(ctx, "", final=True)
+    out += handler._suppress_restatement(ctx, tail)
+    return out
+
+
+def test_stray_think_close_drops_the_tag_and_the_restatement():
+    tokens = ["Santa Barbara is sunny, ", "matey. ", "</think>", " Santa Barbara ", "is sunny, matey.", " Extra."]
+    assert _feed_stream(tokens) == "Santa Barbara is sunny, matey.  Extra."
+
+
+def test_stray_think_close_keeps_genuinely_new_text():
+    tokens = ["Aye. ", "</think>", " The tide is turning."]
+    assert _feed_stream(tokens) == "Aye. The tide is turning."
+
+
+def test_no_stray_close_means_no_suppression_of_repeats():
+    assert _feed_stream(["Aye. ", "Aye. "]) == "Aye. Aye. "

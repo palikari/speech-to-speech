@@ -227,6 +227,11 @@ _Update at the end of a session that changed something._
   The page maps it to a persona name and labels each bubble/history row by
   who actually spoke it, not by the current persona; a thinking bubble keeps
   its provisional name until the text lands.
+- 2026-09-14 (stray </think>): Qwen3.8 sometimes treats the template's
+  pre-filled empty think block as open, "thinks" in plain text (already
+  streamed and spoken), emits `</think>`, then restates the answer. The
+  handler now drops a stray closing tag and suppresses the restatement
+  while it matches what was already emitted (`_suppress_restatement`).
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache
