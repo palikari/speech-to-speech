@@ -2959,3 +2959,6 @@ body.cam-on .footer {
 .circle.muted .ind-bars { opacity: 0.25; }
 .wake-toggle[data-muted] { color: var(--error); border-color: color-mix(in srgb, var(--error) 50%, transparent); }
 .wake-toggle[data-muted] .wake-dot { background: var(--error); box-shadow: none; }
+
+/* ── Privacy note under the profile fields ──────────────────────────────── */
+.privacy-note { display: block; margin-top: 6px; padding: 8px 10px; border-left: 2px solid var(--border-strong); color: var(--text-faint); line-height: 1.45; }

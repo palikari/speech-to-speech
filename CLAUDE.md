@@ -148,7 +148,7 @@ _Update at the end of a session that changed something._
   model / Warming up the voice; 25 s fail-safe), and assistant bubbles now
   stay while speaker output is audible (client emits `output-level`; chat
   view bumps the bubble's expiry, fades 3 s after the last word). Assets are
-  cache-busted with `?v=audio-24k-v46` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
+  cache-busted with `?v=audio-24k-v47` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
   editing demo JS/CSS or browsers keep the old files.
 - 2026-09-14 (tools): the LLM handler now parses the model's native
   `<tool_call><function=…><parameter=…>` XML blocks as well as the prompted
@@ -537,6 +537,15 @@ _Update at the end of a session that changed something._
   geocodes it once (Places text search, location field only, cached a
   week). Live: name used, 178 days to the birthday via date_math, metric
   units from the notes, and with no profile she asks rather than guesses.
+- 2026-09-15 (privacy note): reviewed https://ollama.com/privacy (March
+  2026): cloud requests processed transiently, not stored, not used for
+  training, usage metadata only; subprocessors ("infrastructure and
+  inference providers") named without detail; web search not specifically
+  addressed. Settings now carries a note listing what leaves the machine
+  (speech, prompt with profile, tool results, camera frames; search queries
+  to the search provider; standby drops unaddressed speech), and
+  `PRIVACY.md` documents both configurations with the fully local launch
+  line. For paying clients: get the provider's DPA and subprocessor list.
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache

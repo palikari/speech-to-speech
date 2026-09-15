@@ -11,7 +11,7 @@
       rel="stylesheet"
     />
     <link rel="icon" type="image/svg+xml" href="favicon.svg?v=4" />
-    <link rel="stylesheet" href="style.css?v=audio-24k-v46" />
+    <link rel="stylesheet" href="style.css?v=audio-24k-v47" />
   </head>
   <!--
     `booting` disables transitions/animations until the first paint commits.
@@ -352,6 +352,14 @@
                 city, which reach the language-model provider with each turn. The street address is
                 used only for nearby searches and directions and is never sent to the model.
               </small>
+              <small class="privacy-note">
+                What leaves this machine: your transcribed speech, the persona prompt with those
+                profile details, tool results (web search passages, restaurant and health data), and a
+                camera frame when the assistant takes a snapshot, all to the language-model provider;
+                web search queries also go to the search provider. In standby, anything said without
+                the wake word is dropped before it reaches the model. Running the server with the local
+                model and search off keeps everything on this machine (see PRIVACY.md in the repo).
+              </small>
             </div>
 
             <label class="field">
@@ -492,6 +500,6 @@
     </dialog>
 
     <script src="vendor/openai-realtime-agents.umd.js"></script>
-    <script type="module" src="main.js?v=audio-24k-v46"></script>
+    <script type="module" src="main.js?v=audio-24k-v47"></script>
   </body>
 </html>
