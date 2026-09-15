@@ -49,7 +49,7 @@ from speech_to_speech.LLM.utils import (
     voice_snapshot,
 )
 from speech_to_speech.LLM.voice_prompt import build_voice_system_prompt
-from speech_to_speech.LLM.wake_gate import extend_awake_window, gate_turn
+from speech_to_speech.LLM.wake_gate import drop_last_user_turn, extend_awake_window, gate_turn
 from speech_to_speech.pipeline.cancel_scope import CancelScope
 from speech_to_speech.pipeline.handler_types import LLMIn, LLMOut
 from speech_to_speech.pipeline.messages import (
@@ -938,6 +938,7 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
             logger.info("Wake gate: answering (%s)", gate.reason)
             return False
         logger.info("Wake gate: not answering (%s)", gate.reason)
+        drop_last_user_turn(request.runtime_config)
         return True
 
     def _process_audio(self, request: LLMIn) -> Iterator[LLMOut]:

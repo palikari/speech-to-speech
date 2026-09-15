@@ -519,6 +519,23 @@ export class ChatView {
     this._scrollToBottom();
   }
 
+  /** The server declined the latest user turn (standby, not addressed): dim it and say so. */
+  markLastUserTurnUnaddressed() {
+    const bubble = this._activeUserBubble;
+    if (bubble?.isConnected && !bubble.classList.contains("out") && !bubble.classList.contains("voice")) {
+      bubble.classList.add("unaddressed");
+      this._bumpDismiss(bubble, 2500);
+    }
+    const hist = this._userHistByItem.get(this._activeUserItemId);
+    if (hist && !hist.querySelector(".hist-note")) {
+      hist.classList.add("unaddressed");
+      const note = document.createElement("div");
+      note.className = "hist-note";
+      note.textContent = "Not addressed";
+      hist.appendChild(note);
+    }
+  }
+
   /** Tag an assistant history row as interrupted (user barged in mid-reply).
    *  @param {HTMLElement | null} hist */
   _markHistInterrupted(hist) {

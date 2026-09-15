@@ -102,3 +102,86 @@ def test_handler_gate_reads_the_latest_user_turn_and_extends_the_window(monkeypa
     assert d.answer is False and d.other_persona == "witch"
     say("Okay, go to sleep.")
     assert handler._wake_gate(cfg).answer is False
+
+
+def test_a_sleep_request_does_not_reopen_the_window_and_declined_turns_leave_the_history():
+    from openai.types.realtime.realtime_conversation_item_user_message import (
+        Content as UserContent,
+    )
+    from openai.types.realtime.realtime_conversation_item_user_message import (
+        RealtimeConversationItemUserMessage,
+    )
+
+    from speech_to_speech.api.openai_realtime.runtime_config import RuntimeConfig
+    from speech_to_speech.LLM.wake_gate import drop_last_user_turn, extend_awake_window, gate_turn
+
+    cfg = RuntimeConfig()
+    cfg.apply_session_update(
+        RealtimeSessionCreateRequest.model_validate(
+            {
+                "type": "realtime",
+                "s2s_wake": {"enabled": True, "words": ["sam"], "sleep_phrases": ["go on standby", "go to sleep"]},
+            }
+        )
+    )
+
+    def say(text):
+        return cfg.chat.add_item(
+            RealtimeConversationItemUserMessage(
+                type="message", role="user", content=[UserContent(type="input_text", text=text)]
+            )
+        )
+
+    say("Sam, what's the weather?")
+    extend_awake_window(cfg)
+    assert cfg.wake_awake_until > 0  # a normal reply opens the window
+    say("Sam, go on standby.")
+    extend_awake_window(cfg)
+    assert cfg.wake_awake_until == 0  # the acknowledgement of a sleep request does not
+
+    overheard = say("So anyway, I told him the roof needs fixing.")
+    assert gate_turn(cfg).answer is False
+    assert drop_last_user_turn(cfg) == overheard.id
+    assert all(getattr(i, "id", None) != overheard.id for i in cfg.chat.buffer)
+    assert [i.content[0].text for i in cfg.chat.buffer if getattr(i, "role", None) == "user"][
+        -1
+    ] == "Sam, go on standby."
+
+
+def test_tool_follow_ups_are_not_gated():
+    from openai.types.realtime.conversation_item import (
+        RealtimeConversationItemFunctionCall,
+        RealtimeConversationItemFunctionCallOutput,
+    )
+    from openai.types.realtime.realtime_conversation_item_user_message import (
+        Content as UserContent,
+    )
+    from openai.types.realtime.realtime_conversation_item_user_message import (
+        RealtimeConversationItemUserMessage,
+    )
+
+    from speech_to_speech.api.openai_realtime.runtime_config import RuntimeConfig
+    from speech_to_speech.LLM.wake_gate import gate_turn
+
+    cfg = RuntimeConfig()
+    cfg.apply_session_update(
+        RealtimeSessionCreateRequest.model_validate(
+            {"type": "realtime", "s2s_wake": {"enabled": True, "words": ["sam"], "sleep_phrases": ["go on standby"]}}
+        )
+    )
+    cfg.chat.add_item(
+        RealtimeConversationItemUserMessage(
+            type="message", role="user", content=[UserContent(type="input_text", text="Sam, go on standby.")]
+        )
+    )
+    assert gate_turn(cfg).answer is False  # the sleep phrase itself, as a fresh turn
+    cfg.chat.add_item(
+        RealtimeConversationItemFunctionCall(
+            type="function_call", call_id="call_1", name="set_listening", arguments='{"mode":"standby"}'
+        )
+    )
+    cfg.chat.add_item(
+        RealtimeConversationItemFunctionCallOutput(type="function_call_output", call_id="call_1", output="Standby is on.")
+    )
+    decision = gate_turn(cfg)
+    assert decision.answer is True and decision.reason == "tool follow-up"  # the acknowledgement goes through

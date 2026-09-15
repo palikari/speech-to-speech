@@ -49,7 +49,7 @@ import { OrbVisualiser, VIS_FFT_SIZE } from "./ws/orb-visualizer.js";
 import { SentAudioRecorder } from "./ws/user-audio-recorder.js";
 
 export const AUDIO_SAMPLE_RATE = 24_000;
-export const AUDIO_WORKLET_VERSION = "audio-24k-v39";
+export const AUDIO_WORKLET_VERSION = "audio-24k-v40";
 const MIC_CHUNK_MS = 40;
 const CAPTURE_CONFIG_TIMEOUT_MS = 2_000;
 const SPEAKING_OPEN_DB = -50;
@@ -584,6 +584,9 @@ export class S2sRealtimeClient extends EventTarget {
           status: event.response?.status ?? "completed",
           audible: this._audibleResponses.has(responseId),
           transcript,
+          // False for a response the server declined (wake mode, not addressed):
+          // no items at all, unlike a tool-call-only response.
+          hadOutput: (event.response?.output?.length ?? 0) > 0,
         } }));
         this._audibleResponses.delete(responseId);
         this._asstTranscriptByResp.delete(responseId);

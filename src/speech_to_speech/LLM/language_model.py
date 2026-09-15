@@ -62,7 +62,13 @@ from speech_to_speech.LLM.utils import (
     voice_snapshot,
 )
 from speech_to_speech.LLM.voice_prompt import build_voice_system_prompt
-from speech_to_speech.LLM.wake_gate import WakeDecision, extend_awake_window, gate_turn, last_user_text
+from speech_to_speech.LLM.wake_gate import (
+    WakeDecision,
+    drop_last_user_turn,
+    extend_awake_window,
+    gate_turn,
+    last_user_text,
+)
 from speech_to_speech.pipeline.cancel_scope import CancelScope
 from speech_to_speech.pipeline.handler_types import LLMIn, LLMOut
 from speech_to_speech.pipeline.messages import (
@@ -756,6 +762,7 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
             gate = self._wake_gate(runtime_config)
             if gate is not None and not gate.answer:
                 logger.info("Wake gate: not answering (%s)", gate.reason)
+                drop_last_user_turn(runtime_config)
                 yield EndOfResponse(
                     turn_id=ctx.turn_id,
                     turn_revision=ctx.turn_revision,

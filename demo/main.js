@@ -17,10 +17,10 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v39";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v40";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v39";
-import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v39";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v40";
+import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v40";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -62,6 +62,8 @@ const PERSONA_HANDOFF =
   + " website or opening hours, call restaurant_details. Call place_call only when the user asks"
   + " you to call or phone someone, and say the name and number as you do. To open a place's"
   + " website, its Google reviews or directions in a new tab, call open_page, only when asked."
+  + " When the user asks you to go on standby, stop listening, only answer to your name, mute, or"
+  + " listen normally again, call set_listening with that mode and confirm in a few words."
   + " When the user asks for a poem, song, story, list or explanation, that request overrides"
   + " the short-reply rule: give the whole thing in one reply, every line of it, without a"
   + " preamble and without waiting to be asked for more. Never promise something for later."
@@ -264,6 +266,22 @@ const TOOL_DEFS = {
         name: { type: "string", description: "Who is being called." },
       },
       required: ["number"],
+    },
+  },
+  set_listening: {
+    type: "function",
+    name: "set_listening",
+    description:
+      "Change how the assistant listens. Call it only when the user explicitly asks to change that; " +
+      "never for any other request, and always with a mode. \"standby\": only answer when called " +
+      "by name (go on standby, stop listening, stop answering, only answer when I say your name). " +
+      "\"normal\": answer everything again (listen normally, stop needing the wake word). " +
+      "\"muted\": switch the microphone off entirely; the user must tap the mic to unmute and " +
+      "cannot wake you by voice, so say so.",
+    parameters: {
+      type: "object",
+      properties: { mode: { type: "string", enum: ["standby", "normal", "muted"] } },
+      required: ["mode"],
     },
   },
   open_page: {
@@ -697,7 +715,10 @@ function applyPersona(id, reason) {
 // another persona is not answered by the server; this page switches persona
 // and asks for the reply itself, so "Esmerelda, ..." gets Esmerelda.
 const WAKE_WINDOW_S = 45;
-const WAKE_SLEEP_PHRASES = ["go to sleep", "that's all", "that is all", "never mind", "goodbye"];
+const WAKE_SLEEP_PHRASES = [
+  "go to sleep", "that's all", "that is all", "never mind", "goodbye",
+  "go on standby", "standby mode", "stop listening", "stop answering",
+];
 let wakeEnabled = localStorage.getItem(STORAGE_KEYS.wake) === "1";
 const wakeBtn = $("#wake-btn");
 const wakeLabel = $("#wake-label");
@@ -733,16 +754,19 @@ function renderWakeToggle() {
   const name = current ? PERSONAS[current].name : null;
   wakeBtn.setAttribute("aria-pressed", wakeEnabled ? "true" : "false");
   wakeLabel.textContent = wakeEnabled
-    ? `Wake word on · say "${name === "Bob" ? "Hey Bob" : name ?? "the name"}"`
-    : "Wake word off";
+    ? `Standby · say "${name === "Bob" ? "Hey Bob" : name ?? "the name"}" to wake`
+    : "Listening · answers everything";
 }
 
-wakeBtn.addEventListener("click", () => {
-  wakeEnabled = !wakeEnabled;
+/** Standby (wake word required) on or off; persisted, shown under the orb, sent to the server. */
+function setWakeEnabled(on) {
+  wakeEnabled = !!on;
   localStorage.setItem(STORAGE_KEYS.wake, wakeEnabled ? "1" : "0");
   renderWakeToggle();
   sendWakeConfig();
-});
+}
+
+wakeBtn.addEventListener("click", () => setWakeEnabled(!wakeEnabled));
 
 /** The persona whose voice is currently selected, or null for a custom voice. */
 function currentPersonaId() {
@@ -825,7 +849,7 @@ function activeToolDefs() {
   const defs = [];
   defs.push(TOOL_DEFS.switch_persona);
   // Deterministic, keyless, always on: the model must not count days or do sums itself.
-  defs.push(LOCAL_TOOL_DEFS.date_math, LOCAL_TOOL_DEFS.calculate);
+  defs.push(LOCAL_TOOL_DEFS.date_math, LOCAL_TOOL_DEFS.calculate, TOOL_DEFS.set_listening);
   if (toolsEnabled.web_search && searchAvailable()) {
     defs.push(TOOL_DEFS.web_search);
     if (serverFetch) defs.push(TOOL_DEFS.web_fetch);
@@ -871,8 +895,9 @@ let client = null;
 /** @type {MediaStream | null} */
 let micStream = null;
 let micMuted = false;
-/** The mic is muted because the page started a phone call (see muteForCall). */
-let callMuted = false;
+/** The mic is muted by the page (a phone call, or a spoken "mute"); the mic button lifts it. */
+let hardMuted = false;
+let hardMuteCaption = "";
 
 /** Apply both the user's mute choice and the temporary replay guard. */
 function syncMicMuteState() {
@@ -941,10 +966,11 @@ function updateRestartAvailability() {
  * @param {"" | "error" | "muted"} [kind]
  */
 const CALL_MUTE_CAPTION = "Mic muted for your call · tap the mic to unmute";
+const HARD_MUTE_CAPTION = "Muted · tap the mic to unmute";
 function setCaption(text, kind = "") {
-  // While the mic is muted for a call, that fact outranks the state captions
+  // While the page has muted the mic, that fact outranks the state captions
   // that every status change repaints; errors still show.
-  if (callMuted && kind !== "error") { text = CALL_MUTE_CAPTION; kind = "muted"; }
+  if (hardMuted && kind !== "error") { text = hardMuteCaption; kind = "muted"; }
   const trimmed = text.trim();
   circleCaption.textContent = trimmed;
   circleCaption.className = `circle-caption${kind ? ` ${kind}` : ""}${trimmed ? "" : " empty"}`;
@@ -1422,6 +1448,8 @@ async function runTool(name, argsJson, callId) {
       result = { output: det.text, cards: det.found ? [det] : [] };
     } else if (name === "place_call") {
       result.output = placeCall(args);
+    } else if (name === "set_listening") {
+      result.output = applyListeningMode(typeof args.mode === "string" ? args.mode : "");
     } else if (name === "open_page") {
       const opened = await openPlacePage(args);
       result = { output: opened.text, cards: opened.url ? [opened] : [] };
@@ -1616,12 +1644,44 @@ async function openPlacePage(args) {
   };
 }
 
+/** Mute the mic until the user taps the mic button, with a caption saying why. @param {string} caption */
+function hardMute(caption) {
+  if (!micStream || !client) return false;
+  hardMuted = true;
+  hardMuteCaption = caption;
+  setMicMuted(true);
+  setCaption(caption, "muted");
+  return true;
+}
 /** Mute the mic for a phone call the page just started; the user unmutes with the mic button. */
 function muteForCall() {
-  if (!micStream || !client) return;
-  callMuted = true;
-  setMicMuted(true);
-  setCaption(CALL_MUTE_CAPTION, "muted");
+  hardMute(CALL_MUTE_CAPTION);
+}
+
+/** The set_listening tool: standby (wake word), normal, or muted. @param {string} mode */
+function applyListeningMode(mode) {
+  const current = currentPersonaId();
+  const who = current ? PERSONAS[current].name : "the assistant";
+  if (mode === "standby") {
+    setWakeEnabled(true);
+    console.log("[listening] standby");
+    return `Standby is on: ${who} now answers only when addressed by name (${wakeWordsFor(current ?? "").join(", ") || "its name"}), and for a short while after each reply. Confirm in a few words.`;
+  }
+  if (mode === "normal") {
+    setWakeEnabled(false);
+    console.log("[listening] normal");
+    return `Normal listening: ${who} answers everything again. Confirm in a few words.`;
+  }
+  if (mode === "muted") {
+    const ok = hardMute(HARD_MUTE_CAPTION);
+    console.log("[listening] muted", ok);
+    return ok
+      ? "The microphone is now off. The user must tap the mic button to unmute; they cannot wake you by voice. Say goodbye briefly and mention the mic button."
+      : "Could not mute: no live microphone.";
+  }
+  return mode
+    ? `Unknown listening mode ${JSON.stringify(mode)}; use standby, normal or muted. Nothing changed.`
+    : "No mode given, so nothing changed. Only call set_listening when the user asks to change how you listen, and pass standby, normal or muted.";
 }
 /** @param {boolean} muted */
 function setMicMuted(muted) {
@@ -2026,8 +2086,9 @@ async function handleStartError(err) {
 micBtn.addEventListener("click", () => {
   if (!micStream || !client) return;
   setMicMuted(!micMuted);
-  if (!micMuted && callMuted) {
-    callMuted = false;
+  if (!micMuted && hardMuted) {
+    hardMuted = false;
+    hardMuteCaption = "";
     setCaption(STATE_VIEWS[currentState]?.caption ?? "", "");
   }
 });
@@ -2428,6 +2489,10 @@ async function doStart(audioContext = null) {
     if (replyAfterResponse) {
       replyAfterResponse = false;
       if (client === c) c.requestResponse();
+    } else if (wakeEnabled && detail.status === "completed" && detail.hadOutput === false) {
+      // Standby: the server declined this turn (not addressed). It is gone from the
+      // model's context; show it as heard-but-not-answered rather than as a question.
+      chat.markLastUserTurnUnaddressed();
     }
     promisedPersona = null;
     switchedThisResponse = false;
@@ -2683,7 +2748,8 @@ async function teardown() {
   // The webcam is independent of the call lifecycle (it runs while the user is
   // on the page), so we leave it on here — only the camera toggle stops it.
   micMuted = false;
-  callMuted = false;
+  hardMuted = false;
+  hardMuteCaption = "";
   recentPlaces = [];
   micBtn.classList.remove("muted");
   document.body.classList.remove("rtc-live");

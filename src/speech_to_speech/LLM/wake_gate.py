@@ -145,16 +145,52 @@ def last_user_text(runtime_config: Any) -> str:
     return ""
 
 
+def _newest_is_user_turn(runtime_config: Any) -> bool:
+    """True when the newest history item is a user message (a fresh turn to judge).
+
+    A tool follow-up ends in a function_call_output: the user turn it belongs to
+    was already admitted, so its reply must not be re-judged (or "go on standby"
+    would silence its own acknowledgement).
+    """
+    buffer = list(runtime_config.chat.buffer)
+    return bool(buffer) and getattr(buffer[-1], "role", None) == "user"
+
+
 def gate_turn(runtime_config: Any) -> Optional[WakeDecision]:
     """None when wake mode is not configured on the session; else whether to answer this turn."""
     cfg = parse_wake_config(runtime_config.session)
     if cfg is None or not cfg.enabled:
         return None
+    if not _newest_is_user_turn(runtime_config):
+        return WakeDecision(True, "tool follow-up")
     return decide(cfg, last_user_text(runtime_config), runtime_config.wake_awake_until)
 
 
 def extend_awake_window(runtime_config: Any) -> None:
-    """After a reply, keep answering without a wake word for the configured window."""
+    """After a reply, keep answering without a wake word for the configured window.
+
+    Not when the user's turn was itself a request to sleep ("go on standby"):
+    the reply that acknowledges it must not reopen the window.
+    """
     cfg = parse_wake_config(runtime_config.session)
-    if cfg is not None and cfg.enabled:
-        runtime_config.wake_awake_until = time.monotonic() + cfg.window_s
+    if cfg is None or not cfg.enabled:
+        return
+    if is_sleep_phrase(last_user_text(runtime_config), cfg.sleep_phrases):
+        runtime_config.wake_awake_until = 0.0
+        return
+    runtime_config.wake_awake_until = time.monotonic() + cfg.window_s
+
+
+def drop_last_user_turn(runtime_config: Any) -> Optional[str]:
+    """Remove the newest user message from the history (a turn the wake gate declined).
+
+    Overheard talk that the persona did not answer must not stay in the model's
+    context. Returns the removed item id, or None.
+    """
+    for item in reversed(list(runtime_config.chat.buffer)):
+        if getattr(item, "role", None) == "user":
+            item_id = getattr(item, "id", None)
+            if item_id:
+                runtime_config.chat.rollback_generation(item_id, item_ids=set(), call_ids=set())
+            return item_id
+    return None

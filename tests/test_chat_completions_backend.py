@@ -1058,3 +1058,21 @@ def test_system_prompt_carries_the_current_date_in_the_clients_zone():
     assert system["role"] == "system"
     assert "Be brief." in system["content"]
     assert "Current date and time: " in system["content"] and "(Europe/London)" in system["content"]
+
+
+def test_wake_gate_declined_turn_is_removed_from_the_history():
+    handler = _make_handler()
+    session = _session_with({"s2s_wake": {"enabled": True, "words": ["bob"]}})
+    chat = Chat(10)
+    rc = RuntimeConfig(chat=chat, session=session)
+    handler.client.chat.completions.next_result = _FakeStream([_chunk(content="Sure.")])
+    chat.add_item(make_user_message("Hey Bob, hello."))
+    list(handler.process(GenerateResponseRequest(runtime_config=rc, turn_id="t", turn_revision=0)))
+    chat.add_item(
+        make_user_message("The roof needs fixing, I told him.")
+    )  # overheard, inside the window? no: window opened by the reply
+    rc.wake_awake_until = 0.0  # pretend the window has closed
+    outs = list(handler.process(GenerateResponseRequest(runtime_config=rc, turn_id="t2", turn_revision=0)))
+    assert not any(isinstance(o, LLMResponseChunk) for o in outs)
+    user_texts = [i.content[0].text for i in chat.buffer if getattr(i, "role", None) == "user"]
+    assert user_texts == ["Hey Bob, hello."]  # the overheard turn is gone from the model's context

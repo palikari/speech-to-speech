@@ -2949,3 +2949,6 @@ body.cam-on .footer {
 .link-card { margin-top: 8px; font-size: 12px; color: var(--text-dim); }
 .link-card a { color: var(--accent-2); text-decoration: none; font-weight: 600; }
 .link-card a:hover { text-decoration: underline; }
+
+/* ── Standby: turns the server heard but did not answer ─────────────────── */
+.bubble.user.unaddressed, .hist-msg.user.unaddressed { opacity: 0.5; }

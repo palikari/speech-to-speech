@@ -148,7 +148,7 @@ _Update at the end of a session that changed something._
   model / Warming up the voice; 25 s fail-safe), and assistant bubbles now
   stay while speaker output is audible (client emits `output-level`; chat
   view bumps the bubble's expiry, fades 3 s after the last word). Assets are
-  cache-busted with `?v=audio-24k-v39` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
+  cache-busted with `?v=audio-24k-v40` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
   editing demo JS/CSS or browsers keep the old files.
 - 2026-09-14 (tools): the LLM handler now parses the model's native
   `<tool_call><function=…><parameter=…>` XML blocks as well as the prompted
@@ -474,6 +474,22 @@ _Update at the end of a session that changed something._
   setCaption while `callMuted`, since every status change repaints it. The page keeps the last 40 places seen
   (`recentPlaces`) so open_page needs no server call when the place was in
   a recent result; the website comes from a details fetch when missing.
+- 2026-09-15 (standby by voice): `set_listening` tool {standby | normal |
+  muted}, always offered. standby = the existing wake mode switched on by
+  voice ("go on standby", "stop listening", "only answer to your name");
+  normal = wake mode off; muted = the mic off with the caption "Muted · tap
+  the mic to unmute" (a hard mute cannot be lifted by voice: no audio
+  reaches the server; an on-device wake word is the later answer). Server:
+  `extend_awake_window` no longer reopens the window when the user's turn
+  was a sleep phrase (so "go on standby" takes effect at once, not 45 s
+  later), and a turn the gate declines is removed from the history
+  (`drop_last_user_turn`) so overheard talk never reaches the model's
+  context. Page: the client's response-finished carries `hadOutput`; a
+  completed response with no items while wake mode is on marks the user
+  turn "Not addressed" (dimmed) in the bubble and the history. Orb label
+  now reads "Standby · say "Sam" to wake" / "Listening · answers everything".
+  Default per device: standby on a shared device, normal at the desk (the
+  toggle is persisted per browser).
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache
