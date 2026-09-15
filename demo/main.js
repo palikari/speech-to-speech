@@ -17,11 +17,11 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v63";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v64";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v63";
-import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v63";
-import { Ambience } from "./ui/ambience.js?v=audio-24k-v63";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v64";
+import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v64";
+import { Ambience } from "./ui/ambience.js?v=audio-24k-v64";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -310,7 +310,7 @@ const TOOL_DEFS = {
     name: "play_sound",
     description:
       "Play one of your persona's sound effects on the user's speakers, once, when it fits the " +
-      "moment (the witch's spell, cat or cauldron; the professor's sparks, potion, power surge, " +
+      "moment (the witch's spell, cat or cauldron; the professor's sparks, potion, ray gun, " +
       "monster's groan or crazy laugh). At most one per reply, only when it " +
       "adds to the scene, always with a name from the list, and never say that you played it. " +
       "For ordinary replies (facts, arithmetic, small talk) do not call this at all. Decide " +

@@ -148,7 +148,7 @@ _Update at the end of a session that changed something._
   model / Warming up the voice; 25 s fail-safe), and assistant bubbles now
   stay while speaker output is audible (client emits `output-level`; chat
   view bumps the bubble's expiry, fades 3 s after the last word). Assets are
-  cache-busted with `?v=audio-24k-v63` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
+  cache-busted with `?v=audio-24k-v64` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
   editing demo JS/CSS or browsers keep the old files.
 - 2026-09-14 (tools): the LLM handler now parses the model's native
   `<tool_call><function=…><parameter=…>` XML blocks as well as the prompted
@@ -678,8 +678,9 @@ _Update at the end of a session that changed something._
   `~/Documents/Sound Effects/Mad Scientist` masters: bed = mad scientist's
   lab (2 min mp3; the master sat at -51 dB mean, so +30 dB to land near
   the witch bed's level), one-shots electricity sparks (8 s of a Jacob's
-  ladder), potion bubbling (8 s), power surge, monster groan, crazy
-  scientist (last two named from the file names, unverified by ear).
+  ladder), potion bubbling (8 s), ray gun (the "Power Mad Glitch" master,
+  named by Michael's ear), monster groan, crazy scientist (from the file
+  name, unverified by ear).
   Levels matched with ffmpeg volumedetect: beds ~-20 dB mean, one-shots
   ~-25 dB. The play_sound description now names both personas' sounds.
   Recipe for the next persona: convert the bed to mp3 (`-q:a 2`), trim

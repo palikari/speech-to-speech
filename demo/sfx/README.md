@@ -23,5 +23,5 @@ one-shot near -25 dB):
   `cauldron-bubbles.wav` (8 s), `cat-purring.wav` (6 s).
 - `villain/` (Professor Karloff): `bed.mp3` (mad scientist's lab, 2 min,
   +30 dB from the master), `electricity-sparks.wav` (Jacob's ladder, first
-  8 s), `potion-bubbling.wav` (8 s), `power-surge.wav` (9 s),
+  8 s), `potion-bubbling.wav` (8 s), `ray-gun.wav` (9 s, the "Power Mad Glitch" master),
   `monster-groan.wav` (3.5 s), `crazy-scientist.wav` (4 s).
