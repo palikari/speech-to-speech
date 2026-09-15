@@ -17,10 +17,10 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v37";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v38";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v37";
-import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v37";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v38";
+import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v38";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -60,7 +60,8 @@ const PERSONA_HANDOFF =
   + " For one place's inspection history, scores over time or violations, call"
   + " restaurant_inspections and read out the recent scores with their dates. For a phone number,"
   + " website or opening hours, call restaurant_details. Call place_call only when the user asks"
-  + " you to call or phone someone, and say the name and number as you do."
+  + " you to call or phone someone, and say the name and number as you do. To open a place's"
+  + " website, its Google reviews or directions in a new tab, call open_page, only when asked."
   + " When the user asks for a poem, song, story, list or explanation, that request overrides"
   + " the short-reply rule: give the whole thing in one reply, every line of it, without a"
   + " preamble and without waiting to be asked for more. Never promise something for later."
@@ -263,6 +264,23 @@ const TOOL_DEFS = {
         name: { type: "string", description: "Who is being called." },
       },
       required: ["number"],
+    },
+  },
+  open_page: {
+    type: "function",
+    name: "open_page",
+    description:
+      "Open a restaurant's website, its Google reviews, or Google Maps directions to it, in a new " +
+      "browser tab. Only when the user asks to open, show, see or pull up one of those. Uses a place " +
+      "from an earlier result, or looks it up by name.",
+    parameters: {
+      type: "object",
+      properties: {
+        kind: { type: "string", enum: ["website", "reviews", "directions"] },
+        name: { type: "string", description: "Restaurant name." },
+        area: { type: "string", description: "Street, city or zip if there are several locations." },
+      },
+      required: ["kind", "name"],
     },
   },
   restaurant_inspections: {
@@ -813,7 +831,7 @@ function activeToolDefs() {
     if (serverFetch) defs.push(TOOL_DEFS.web_fetch);
   }
   if (toolsEnabled.camera_snapshot) defs.push(TOOL_DEFS.camera_snapshot);
-  if (toolsEnabled.find_restaurants && serverRestaurants) defs.push(TOOL_DEFS.find_restaurants, TOOL_DEFS.restaurant_details, TOOL_DEFS.place_call);
+  if (toolsEnabled.find_restaurants && serverRestaurants) defs.push(TOOL_DEFS.find_restaurants, TOOL_DEFS.restaurant_details, TOOL_DEFS.place_call, TOOL_DEFS.open_page);
   if (toolsEnabled.find_restaurants && serverInspections) defs.push(TOOL_DEFS.restaurant_inspections);
   return defs;
 }
@@ -1398,6 +1416,9 @@ async function runTool(name, argsJson, callId) {
       result = { output: det.text, cards: det.found ? [det] : [] };
     } else if (name === "place_call") {
       result.output = placeCall(args);
+    } else if (name === "open_page") {
+      const opened = await openPlacePage(args);
+      result = { output: opened.text, cards: opened.url ? [opened] : [] };
     } else if (name === "restaurant_inspections") {
       const history = await execInspections(args);
       result = { output: history.text, cards: history.found ? [history] : [] };
@@ -1497,8 +1518,10 @@ async function execFindRestaurants(args) {
     throw new Error(`restaurant search error (${detail})`);
   }
   const json = await res.json();
+  const results = Array.isArray(json.results) ? json.results : [];
+  rememberPlaces(results);
   const note = pos ? "" : "\n(Location not shared: results are for the area named in the query.)";
-  return { text: `${json.text}${note}`, results: Array.isArray(json.results) ? json.results : [] };
+  return { text: `${json.text}${note}`, results };
 }
 
 /** @param {Record<string, unknown>} args @returns {Promise<{ text: string, found: boolean, phone?: string, phone_dial?: string }>} */
@@ -1518,8 +1541,91 @@ async function execDetails(args) {
     try { const j = await res.json(); if (j.detail) detail = j.detail; } catch {}
     throw new Error(`details lookup error (${detail})`);
   }
-  return await res.json();
+  const det = await res.json();
+  if (det.found) rememberPlaces([det]);
+  return det;
 }
+
+/** Places seen in this session's results, newest first (for open_page and the cards). @type {any[]} */
+let recentPlaces = [];
+/** @param {any[]} places */
+function rememberPlaces(places) {
+  for (const p of places) {
+    if (!p || !p.name) continue;
+    recentPlaces = [p, ...recentPlaces.filter((q) => q.id !== p.id || q.name !== p.name)].slice(0, 40);
+  }
+}
+/** Every word of the asked name appears in the place name (as a word prefix). */
+function placeNameMatches(asked, name) {
+  const words = String(asked).toLowerCase().match(/[a-z0-9']+/g) || [];
+  const have = String(name).toLowerCase().match(/[a-z0-9']+/g) || [];
+  const skip = new Set(["the", "a", "an", "and", "of", "at", "in", "on", "by"]);
+  const wanted = words.filter((w) => !skip.has(w));
+  return wanted.length > 0 && wanted.every((w) => have.some((h) => h.startsWith(w)));
+}
+/** @param {string} name @param {string} [area] */
+function findRecentPlace(name, area) {
+  let hits = recentPlaces.filter((p) => placeNameMatches(name, p.name));
+  if (area) {
+    const words = String(area).toLowerCase().match(/[a-z0-9]+/g) || [];
+    const preferred = hits.filter((p) => words.every((w) => String(p.address || "").toLowerCase().includes(w)));
+    if (preferred.length) hits = preferred;
+  }
+  return hits[0] ?? null;
+}
+
+/** Open a URL in a new tab; false when the browser blocked the popup (no user gesture). @param {string} url */
+function openExternal(url) {
+  const w = window.open(url, "_blank", "noopener");
+  return !!w;
+}
+
+/** @param {Record<string, unknown>} args @returns {Promise<{ text: string, url?: string, kind?: string, name?: string, opened?: boolean }>} */
+async function openPlacePage(args) {
+  const kind = typeof args.kind === "string" ? args.kind : "";
+  const name = typeof args.name === "string" ? args.name.trim() : "";
+  const area = typeof args.area === "string" ? args.area.trim() : "";
+  if (!["website", "reviews", "directions"].includes(kind)) return { text: `Unknown page kind ${JSON.stringify(kind)}; use website, reviews or directions.` };
+  if (!name) return { text: "No restaurant name given." };
+  let place = findRecentPlace(name, area);
+  if (!place || (kind === "website" && !place.website)) {
+    const det = await execDetails({ name, area });
+    if (!det.found) return { text: det.text };
+    place = det;
+  }
+  const url = kind === "website" ? place.website : kind === "reviews" ? place.reviews_url : place.directions_url;
+  if (!url) return { text: `${place.name} has no ${kind === "website" ? "website listed" : kind + " link"}.` };
+  const opened = openExternal(url);
+  const label = kind === "website" ? "website" : kind === "reviews" ? "Google reviews" : "directions";
+  return {
+    text: opened
+      ? `Opened the ${label} for ${place.name} in a new tab.`
+      : `The browser blocked the new tab; a link to the ${label} for ${place.name} is shown on screen for the user to tap.`,
+    url, kind, name: place.name, opened,
+  };
+}
+
+/** Mute the mic for a phone call the page just started; the user unmutes with the mic button. */
+let callMuted = false;
+function muteForCall() {
+  if (!micStream || !client) return;
+  callMuted = true;
+  setMicMuted(true);
+  setCaption("Mic muted for your call · tap the mic to unmute", "muted");
+}
+/** @param {boolean} muted */
+function setMicMuted(muted) {
+  micMuted = muted;
+  syncMicMuteState();
+  micBtn.classList.toggle("muted", micMuted);
+  micBtn.setAttribute("aria-label", micMuted ? "Unmute" : "Mute");
+  micBtn.title = micMuted ? "Unmute" : "Mute";
+}
+// A tap on any phone link (the cards) starts a call too: mute the same way.
+document.addEventListener("click", (e) => {
+  const a = /** @type {HTMLElement | null} */ (e.target instanceof Element ? e.target.closest('a[href^="tel:"]') : null);
+  if (a) muteForCall();
+});
 
 /** Hand a number to the browser's phone handler (Google Voice, FaceTime, ...) via a tel: link.
  *  The user still presses Call there, so nothing dials by itself.
@@ -1535,8 +1641,9 @@ function placeCall(args) {
   document.body.appendChild(a);
   a.click();
   a.remove();
-  console.log(`[call] tel:${digits} (${who})`);
-  return `Opened the phone dialer for ${who} at ${raw}. The user completes the call there; if nothing opened, the browser has no phone handler set up.`;
+  muteForCall();
+  console.log(`[call] tel:${digits} (${who}); mic muted for the call`);
+  return `Opened the phone dialer for ${who} at ${raw}. The user completes the call there; if nothing opened, the browser has no phone handler set up. The microphone is muted while they are on the call, so do not expect to hear them until they unmute.`;
 }
 
 /** @param {Record<string, unknown>} args @returns {Promise<{ text: string, found: boolean, name?: string, address?: string, inspections?: unknown[] }>} */
@@ -1908,11 +2015,11 @@ async function handleStartError(err) {
 
 micBtn.addEventListener("click", () => {
   if (!micStream || !client) return;
-  micMuted = !micMuted;
-  syncMicMuteState();
-  micBtn.classList.toggle("muted", micMuted);
-  micBtn.setAttribute("aria-label", micMuted ? "Unmute" : "Mute");
-  micBtn.title = micMuted ? "Unmute" : "Mute";
+  setMicMuted(!micMuted);
+  if (!micMuted && callMuted) {
+    callMuted = false;
+    setCaption(STATE_VIEWS[currentState]?.caption ?? "", "");
+  }
 });
 
 stopBtn.addEventListener("click", async () => {
@@ -2566,6 +2673,8 @@ async function teardown() {
   // The webcam is independent of the call lifecycle (it runs while the user is
   // on the page), so we leave it on here — only the camera toggle stops it.
   micMuted = false;
+  callMuted = false;
+  recentPlaces = [];
   micBtn.classList.remove("muted");
   document.body.classList.remove("rtc-live");
   setState("idle");

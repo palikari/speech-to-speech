@@ -11,6 +11,7 @@ import math
 import os
 import re
 import time
+import urllib.parse
 from typing import Any, Optional
 
 import ga_health
@@ -150,6 +151,17 @@ class RestaurantsRequest(BaseModel):
 # ── Google Places ────────────────────────────────────────────────────────────
 
 
+def place_links(place_id: str, name: str, address: str) -> dict:
+    """Google review and directions links for a place (Maps URLs API; no key needed to open)."""
+    if not place_id:
+        return {"reviews_url": "", "directions_url": ""}
+    dest = urllib.parse.quote(f"{name} {address}".strip())
+    return {
+        "reviews_url": f"https://search.google.com/local/reviews?placeid={place_id}",
+        "directions_url": f"https://www.google.com/maps/dir/?api=1&destination={dest}&destination_place_id={place_id}",
+    }
+
+
 def parse_place(p: dict) -> dict:
     comps = {t: c.get("longText", "") for c in p.get("addressComponents") or [] for t in c.get("types") or []}
     loc = p.get("location") or {}
@@ -171,6 +183,7 @@ def parse_place(p: dict) -> dict:
         "kind": (p.get("primaryTypeDisplayName") or {}).get("text", ""),
         "types": list(p.get("types") or []),
         "operational": p.get("businessStatus", "OPERATIONAL") == "OPERATIONAL",
+        **place_links(p.get("id", ""), (p.get("displayName") or {}).get("text", ""), p.get("formattedAddress", "")),
     }
 
 
@@ -422,6 +435,7 @@ def parse_details(d: dict) -> dict:
         "open_now": (d.get("currentOpeningHours") or {}).get("openNow"),
         "hours": hours,
         "maps_url": d.get("googleMapsUri", ""),
+        **place_links(d.get("id", ""), (d.get("displayName") or {}).get("text", ""), d.get("formattedAddress", "")),
     }
 
 

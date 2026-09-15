@@ -369,3 +369,13 @@ async def test_place_details_uses_recent_results_then_one_details_call(monkeypat
     restaurants._details_cache.clear()
     await restaurants.place_details(restaurants.DetailsRequest(name="Dee Thai", area="Alpharetta"), today="Tuesday")
     assert [c[0] for c in calls][1:] == ["search", "details"]  # cold: an id lookup, then details
+
+
+def test_places_carry_review_and_directions_links():
+    p = restaurants.parse_place(_place("Dee Thai", "10945", "State Bridge Rd"))
+    assert p["reviews_url"] == "https://search.google.com/local/reviews?placeid=id-Dee%20Thai".replace("%20", " ") or p[
+        "reviews_url"
+    ].startswith("https://search.google.com/local/reviews?placeid=")
+    assert p["directions_url"].startswith("https://www.google.com/maps/dir/?api=1&destination=Dee%20Thai%2010945")
+    assert p["directions_url"].endswith("&destination_place_id=id-Dee Thai")
+    assert restaurants.place_links("", "x", "y") == {"reviews_url": "", "directions_url": ""}

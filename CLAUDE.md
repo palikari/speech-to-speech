@@ -148,7 +148,7 @@ _Update at the end of a session that changed something._
   model / Warming up the voice; 25 s fail-safe), and assistant bubbles now
   stay while speaker output is audible (client emits `output-level`; chat
   view bumps the bubble's expiry, fades 3 s after the last word). Assets are
-  cache-busted with `?v=audio-24k-v37` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
+  cache-busted with `?v=audio-24k-v38` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
   editing demo JS/CSS or browsers keep the old files.
 - 2026-09-14 (tools): the LLM handler now parses the model's native
   `<tool_call><function=…><parameter=…>` XML blocks as well as the prompted
@@ -456,6 +456,20 @@ _Update at the end of a session that changed something._
   website and hours. Later: Telnyx/Dograh for real outbound calls, and an
   agent (Sam) placing calls with a disclosure line, once the agent layer
   is server-side.
+- 2026-09-15 (call mute + open_page): after Michael's first call the mic
+  stayed live, the VAD heard his side of the call and Sam commented on it.
+  `place_call` (and any tap on a card's tel: link) now mutes the mic
+  (`muteForCall`, caption "Mic muted for your call · tap the mic to
+  unmute"); the mic button unmutes, no auto-unmute since a tel: hand-off
+  gives no call-ended signal. `open_page` tool {kind: website | reviews |
+  directions, name, area} opens a new tab (`window.open`; if the browser
+  blocks the popup the reply says so and a "Link" card offers the tap);
+  search results and details now carry `reviews_url`
+  (search.google.com/local/reviews?placeid=) and `directions_url` (Maps
+  URLs API with destination_place_id); every card has Reviews / Directions
+  / Website / Call action links. The page keeps the last 40 places seen
+  (`recentPlaces`) so open_page needs no server call when the place was in
+  a recent result; the website comes from a details fetch when missing.
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache

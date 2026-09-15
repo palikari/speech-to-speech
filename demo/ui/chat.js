@@ -36,7 +36,7 @@ function renderDetailsCard(cards) {
   const title = d.maps_url
     ? `<a class="rest-name" href="${escHtml(d.maps_url)}" target="_blank" rel="noopener">${escHtml(d.name)}</a>`
     : `<span class="rest-name">${escHtml(d.name)}</span>`;
-  return `<div class="det-card">${title} ${open}<div class="rest-addr">${escHtml(String(d.address || "").split(",")[0])}</div>${phone}${site}${hours}</div>`;
+  return `<div class="det-card">${title} ${open}<div class="rest-addr">${escHtml(String(d.address || "").split(",")[0])}</div>${phone}${site}${hours}${placeActions({ ...d, website: "", phone: "" })}</div>`;
 }
 
 /** One restaurant's recent inspections: a score timeline plus the latest violations.
@@ -55,8 +55,29 @@ function renderInspectionCard(cards) {
 
 /** Result cards for tools that return structured rows (find_restaurants).
  *  @param {string} name @param {unknown} cards */
+/** Action links shown on place cards: reviews and directions (and the website when known).
+ *  @param {any} r */
+function placeActions(r) {
+  const links = [];
+  if (r.website) links.push(`<a href="${escHtml(r.website)}" target="_blank" rel="noopener">Website</a>`);
+  if (r.reviews_url) links.push(`<a href="${escHtml(r.reviews_url)}" target="_blank" rel="noopener">Reviews</a>`);
+  if (r.directions_url) links.push(`<a href="${escHtml(r.directions_url)}" target="_blank" rel="noopener">Directions</a>`);
+  if (r.phone) links.push(`<a href="tel:${escHtml(r.phone_dial || r.phone)}">Call</a>`);
+  return links.length ? `<div class="rest-actions">${links.join("")}</div>` : "";
+}
+
+/** A single link the model opened (or tried to): tap to open it yourself.
+ *  @param {unknown} cards */
+function renderLinkCard(cards) {
+  const c = /** @type {any} */ (Array.isArray(cards) ? cards[0] : null);
+  if (!c || !c.url) return "";
+  const label = c.kind === "website" ? "Website" : c.kind === "reviews" ? "Google reviews" : "Directions";
+  return `<div class="link-card">${c.opened ? "Opened in a new tab: " : "Tap to open: "}<a href="${escHtml(c.url)}" target="_blank" rel="noopener">${escHtml(label)} for ${escHtml(c.name || "")}</a></div>`;
+}
+
 function renderToolCards(name, cards) {
   if (name === "restaurant_inspections") return renderInspectionCard(cards);
+  if (name === "open_page") return renderLinkCard(cards);
   if (name === "restaurant_details") return renderDetailsCard(cards);
   if (name !== "find_restaurants" || !Array.isArray(cards) || cards.length === 0) return "";
   const price = (n) => (typeof n === "number" ? "$".repeat(Math.max(1, n)) : "");
@@ -72,7 +93,7 @@ function renderToolCards(name, cards) {
       ? `<a class="rest-name" href="${escHtml(r.maps_url)}" target="_blank" rel="noopener">${escHtml(r.name || "")}</a>`
       : `<span class="rest-name">${escHtml(r.name || "")}</span>`;
     const meta = [rating, price(r.price_level), dist, r.open_now ? "open now" : ""].filter(Boolean).join(" · ");
-    return `<li class="rest-card">${score}<div class="rest-main">${title}<div class="rest-meta">${meta}</div><div class="rest-addr">${escHtml(String(r.address || "").split(",")[0])}</div></div></li>`;
+    return `<li class="rest-card">${score}<div class="rest-main">${title}<div class="rest-meta">${meta}</div><div class="rest-addr">${escHtml(String(r.address || "").split(",")[0])}</div>${placeActions(r)}</div></li>`;
   });
   return `<ul class="rest-list">${rows.join("")}</ul>`;
 }
@@ -874,7 +895,7 @@ export class ChatView {
     this._appendHistTool(name, argsJson, output, cards);
     if (image) this._appendHistImage(image); // show the captured frame below the call
     const html = renderToolCards(name, cards);
-    const titles = { find_restaurants: "Restaurants", restaurant_inspections: "Health inspections", restaurant_details: "Details" };
+    const titles = { find_restaurants: "Restaurants", restaurant_inspections: "Health inspections", restaurant_details: "Details", open_page: "Link" };
     if (html) this._spawnCardsBubble(titles[name] ?? name, html);
     this._markUnread();
   }
