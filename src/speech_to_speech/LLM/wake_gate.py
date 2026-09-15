@@ -79,10 +79,14 @@ def _edit_distance(a: str, b: str, limit: int) -> int:
 
 
 def _slack(word: str) -> int:
-    """How many letters a transcription may get wrong and still count."""
-    if len(word) >= 8:
+    """How many letters a transcription may get wrong and still count.
+
+    Only long, name-like words get slack: with one letter of slack a short
+    word collides with everyday speech ("witch" would match "with").
+    """
+    if len(word) >= 9:
         return 2
-    if len(word) >= 5:
+    if len(word) >= 7:
         return 1
     return 0
 

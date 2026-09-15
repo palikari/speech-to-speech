@@ -17,9 +17,9 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v15";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v16";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v15";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v16";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -567,6 +567,8 @@ function currentPersonaId() {
 /** A persona the user asked for by phrase; applied once the in-flight reply ends. */
 let pendingPersona = /** @type {string | null} */ (null);
 let wakeConfigSent = false;
+/** Wake mode: request a reply as the newly addressed persona when the declined response ends. */
+let replyAfterResponse = false;
 
 function activeToolDefs() {
   const defs = [];
@@ -1677,6 +1679,7 @@ async function doStart(audioContext = null) {
   chat.setAssistantName(PERSONAS[currentPersonaId() ?? ""]?.name ?? "Assistant");
   pendingPersona = null;
   wakeConfigSent = false;
+  replyAfterResponse = false;
   setState("connecting");
   setCaption("Asking for mic…", "muted");
   beginWarmup();
@@ -1769,11 +1772,12 @@ async function doStart(audioContext = null) {
       const wanted = personaRequestedIn(d.text);
       if (wanted && wanted !== currentPersonaId()) {
         if (wakeEnabled) {
-          // The server does not answer a turn addressed to another persona;
-          // switch immediately and request the reply as the new persona.
-          console.log(`[persona] wake mode: ${wanted} was addressed; switching and requesting a reply`);
+          // The server does not answer a turn addressed to another persona,
+          // but its (empty) response is still in flight: switch now, and ask
+          // for the reply as the new persona once that response has ended.
+          console.log(`[persona] wake mode: ${wanted} was addressed; switching, reply requested after this response`);
           applyPersona(wanted);
-          client?.requestResponse();
+          replyAfterResponse = true;
         } else {
           console.log(`[persona] user asked for ${wanted}; switching after this reply`);
           pendingPersona = wanted;
@@ -1807,6 +1811,10 @@ async function doStart(audioContext = null) {
       const wanted = pendingPersona;
       pendingPersona = null;
       if (wanted !== currentPersonaId()) applyPersona(wanted);
+    }
+    if (replyAfterResponse) {
+      replyAfterResponse = false;
+      if (client === c) c.requestResponse();
     }
   });
   c.addEventListener("error", (e) => {

@@ -18,6 +18,8 @@ def test_wake_word_matches_whole_words_and_tolerates_transcription_slips():
     assert contains_wake_word("Esmeralda, what's brewing?", ["esmerelda"]) == "esmerelda"  # one letter off
     assert contains_wake_word("Ezmerelda are you there", ["esmerelda"]) == "esmerelda"
     assert contains_wake_word("Tell me about bobsled racing.", ["bob"]) is None
+    assert contains_wake_word("Who am I speaking with?", ["witch"]) is None  # short names: exact only
+    assert contains_wake_word("Barnabi, are you there?", ["barnaby"]) == "barnaby"  # one slip on a long name
     assert contains_wake_word("I bought a robot vacuum.", ["robot"]) == "robot"  # whole word: caller decides context
     assert contains_wake_word("Unit 7, status report.", ["unit seven"]) is None  # digits are not spelled out
     assert contains_wake_word("unit seven status", ["unit seven"]) == "unit seven"

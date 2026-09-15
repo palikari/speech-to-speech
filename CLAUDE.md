@@ -117,7 +117,7 @@ _Update at the end of a session that changed something._
   model / Warming up the voice; 25 s fail-safe), and assistant bubbles now
   stay while speaker output is audible (client emits `output-level`; chat
   view bumps the bubble's expiry, fades 3 s after the last word). Assets are
-  cache-busted with `?v=audio-24k-v15` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
+  cache-busted with `?v=audio-24k-v16` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
   editing demo JS/CSS or browsers keep the old files.
 - 2026-09-14 (tools): the LLM handler now parses the model's native
   `<tool_call><function=…><parameter=…>` XML blocks as well as the prompted
@@ -199,6 +199,13 @@ _Update at the end of a session that changed something._
   config on connect, on toggle, on persona change and on Save. Wake words
   are the persona aliases: Bob/assistant, Esmerelda/Esmeralda/Esmer/witch,
   Barnaby/captain, Karloff/professor/mad scientist/villain, Unit Seven/robot.
+- 2026-09-14 (wake-word fixes from browser testing): short wake words match
+  exactly (slack only from 7 letters; "witch" had matched "with"); in wake
+  mode the reply for a newly addressed persona is requested after the
+  declined response ends (requesting during it raised "another response is
+  in progress"); `updateSession` now also sends instructions + voice as an
+  explicit session.update after the SDK's agent update, because a live
+  persona switch changed the voice but the server kept the old prompt.
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache
