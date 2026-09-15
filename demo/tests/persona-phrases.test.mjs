@@ -16,6 +16,9 @@ const grab = (name) => {
 };
 const REQUEST_RE = grab("PERSONA_REQUEST_RE");
 const ADDRESS_RE = grab("PERSONA_ADDRESS_RE");
+const COMMIT_RE = grab("PERSONA_COMMIT_RE");
+const OFFER_RE = grab("PERSONA_OFFER_RE");
+const AFFIRM_RE = grab("AFFIRM_RE");
 // aliases: [ ... ] lines inside PERSONAS, keyed by the persona id two lines above
 const aliases = {};
 for (const m of src.matchAll(/  (\w+): \{\n(?:.*\n){0,3}?\s+aliases: (\[[^\]]*\]),/g)) aliases[m[1]] = eval(m[2]);
@@ -69,4 +72,33 @@ test("ordinary sentences do not switch", () => {
     "Can I speak with the old salt?", // a nickname: left to the model
   ];
   for (const text of cases) assert.equal(requested(text), null, text);
+});
+
+const promised = (t) => {
+  const named = Object.entries(aliases).filter(([, as]) => as.some((a) => new RegExp(`(?:^|\\W)${a}(?:$|\\W)`, "i").test(t)));
+  if (named.length !== 1) return null;
+  if (OFFER_RE.test(t)) return { id: named[0][0], offer: true };
+  if (COMMIT_RE.test(t)) return { id: named[0][0], offer: false };
+  return null;
+};
+
+test("a reply that promises a hand-off names the persona", () => {
+  assert.deepEqual(promised("Shall I fetch Captain Barnaby for you?"), { id: "captain", offer: true });
+  assert.deepEqual(promised("Would you like me to switch you to Unit Seven?"), { id: "robot", offer: true });
+  // a statement of intent counts as a commitment, not an offer
+  assert.deepEqual(promised("I can switch you over to Captain Barnaby right now."), { id: "captain", offer: false });
+  assert.deepEqual(promised("Very well, I shall fetch Esmerelda for you."), { id: "witch", offer: false });
+  assert.deepEqual(promised("Understood. Transferring you to Professor Karloff."), { id: "villain", offer: false });
+  assert.deepEqual(promised("(chuckle) Very well, the witch awaits."), { id: "witch", offer: false });
+});
+
+test("mere mentions are not promises", () => {
+  assert.equal(promised("Barnaby would love this weather."), null);
+  assert.equal(promised("Esmerelda and Barnaby are both busy, dearie."), null); // ambiguous
+  assert.equal(promised("I am Unit Seven, ready to help."), null);
+});
+
+test("affirmations", () => {
+  for (const t of ["Okay.", "Yes please.", "That's correct.", "Sure, go ahead.", "Do it."]) assert.ok(AFFIRM_RE.test(t), t);
+  for (const t of ["No thanks.", "What's the weather?", "Not right now."]) assert.ok(!AFFIRM_RE.test(t), t);
 });

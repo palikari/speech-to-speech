@@ -17,9 +17,9 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v25";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v26";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v25";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v26";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -43,7 +43,9 @@ const PERSONA_HANDOFF =
   + " one of the others, by name or description, you must call the switch_persona tool with that"
   + " persona; that call is the only thing that performs the switch, a spoken farewell alone does"
   + " nothing. Do it in the same reply: a one-line goodbye in your own voice, then the"
-  + " switch_persona call, before the user has to ask again. Never imitate the others yourself,"
+  + " switch_persona call, before the user has to ask again. The same applies whenever you say"
+  + " you will switch, hand over, fetch someone or step aside, or the user agrees to a switch you"
+  + " offered: make the switch_persona call in that reply. Never imitate the others yourself,"
   + " and never claim to be one of them. Staying in character never means refusing help: for"
   + " anything current or factual you do not know for certain, such as weather, news, prices or"
   + " dates, call the web_search tool when it is available and answer from its result, in"
@@ -477,6 +479,28 @@ const PERSONA_REQUEST_RE =
   /\b(?:switch(?: me)?(?: over)? to|talk to|talk with|speak (?:to|with)|chat with|get me|give me|bring (?:me|in|out|back)|put on|put me through to|connect me (?:to|with)|pass me (?:to|over to)|a word with|(?:i(?:'d| would)? like|i want|let me|can i|could i|may i)(?: to)? (?:talk|speak|chat)(?: to| with)?|wake up|hand (?:me )?over to)\s+(?:the\s+)?([a-z][a-z' ]{2,32})/i;
 const PERSONA_ADDRESS_RE = /^\s*(?:hey|hi|hello|ok|okay|yo)?[\s,]*([a-z][a-z' ]{2,24}?)[,!?.:]/i;
 
+/** The assistant committed to a hand-off in its own words ("I'll switch you over to
+ *  Captain Barnaby", "the witch awaits", "let me fetch Unit Seven"). */
+const PERSONA_COMMIT_RE =
+  /\b(?:switch(?:ing)?(?: you)?(?: over)? to|hand(?:ing)?(?: you)?(?: over)? to|transfer(?:ring)?(?: you)? to|fetch(?:ing)?|get|bring(?:ing)?(?: in| out)?|summon(?:ing)?|call(?:ing)?(?: for| upon)?|step(?:ping)? aside for|make way for|(?:\w+ )?awaits)\b[^.!?]{0,40}/i;
+/** The assistant offered a hand-off and is waiting for a yes ("I can switch you over", "shall I fetch"). */
+const PERSONA_OFFER_RE =
+  /(?:\b(?:can|could|shall|should|may) (?:i|we)\b[^.!?]{0,30}\b(?:switch|hand|transfer|fetch|get|bring|summon|call)\b|\b(?:would you like|do you want|want) (?:me|us) to\b)/i;
+const AFFIRM_RE = /^\s*(?:yes|yeah|yep|yup|sure|okay|ok|please|please do|do it|go ahead|that's (?:right|correct)|correct|absolutely|of course|sounds good|let's do it)\b/i;
+
+/** Persona named in a reply that commits to or offers a hand-off, else null.
+ *  @param {string} text @returns {{ id: string, offer: boolean } | null} */
+function personaPromisedIn(text) {
+  const t = String(text || "");
+  const named = Object.entries(PERSONAS)
+    .map(([id, p]) => ({ id, hit: p.aliases.find((a) => new RegExp(`(?:^|\\W)${a}(?:$|\\W)`, "i").test(t)) }))
+    .filter((x) => x.hit);
+  if (named.length !== 1) return null; // ambiguous or none
+  if (PERSONA_OFFER_RE.test(t)) return { id: named[0].id, offer: true };
+  if (PERSONA_COMMIT_RE.test(t)) return { id: named[0].id, offer: false };
+  return null;
+}
+
 /** @param {string} transcript @returns {string | null} persona id the user asked for */
 function personaRequestedIn(transcript) {
   const text = String(transcript || "");
@@ -498,6 +522,8 @@ const SWITCH_REASONS = /** @type {Record<string, string>} */ ({
   named: "asked by name",
   addressed: "addressed by name",
   inferred: "inferred from your intent",
+  promised: "as the reply promised",
+  confirmed: "you confirmed the offer",
   settings: "chosen in Settings",
 });
 
@@ -587,6 +613,12 @@ let pendingPersona = /** @type {string | null} */ (null);
 let wakeConfigSent = false;
 /** Wake mode: request a reply as the newly addressed persona when the declined response ends. */
 let replyAfterResponse = false;
+/** The model called switch_persona during the response now in flight. */
+let switchedThisResponse = false;
+/** Hand-off the assistant promised in words but did not perform; applied when the reply ends. */
+let promisedPersona = /** @type {string | null} */ (null);
+/** Hand-off the assistant offered; applied if the user's next turn is a yes. */
+let offeredPersona = /** @type {string | null} */ (null);
 
 function activeToolDefs() {
   const defs = [];
@@ -1134,6 +1166,9 @@ async function runTool(name, argsJson, callId) {
     if (name === "switch_persona") {
       const id = resolvePersona(args.persona);
       pendingPersona = null;
+      switchedThisResponse = true;
+      promisedPersona = null;
+      offeredPersona = null;
       if (id && applyPersona(id, "inferred")) {
         result.output = `Switched to ${PERSONAS[id].label}. From now on you are that persona: reply in character, in their voice, and greet the user briefly.`;
       } else {
@@ -1724,6 +1759,9 @@ async function doStart(audioContext = null) {
   pendingPersona = null;
   wakeConfigSent = false;
   replyAfterResponse = false;
+  switchedThisResponse = false;
+  promisedPersona = null;
+  offeredPersona = null;
   setState("connecting");
   setCaption("Asking for mic…", "muted");
   beginWarmup();
@@ -1813,6 +1851,21 @@ async function doStart(audioContext = null) {
       d.speaker = spoken ? spoken.name : undefined;
     }
     chat.onTranscript(d);
+    if (d.role === "user" && !d.partial && offeredPersona) {
+      const offered = offeredPersona;
+      offeredPersona = null;
+      if (AFFIRM_RE.test(d.text) && offered !== currentPersonaId()) {
+        applyPersona(offered, "confirmed");
+        return;
+      }
+    }
+    if (d.role === "assistant" && !d.partial) {
+      const promise = personaPromisedIn(d.text);
+      if (promise && promise.id !== currentPersonaId()) {
+        if (promise.offer) offeredPersona = promise.id;
+        else promisedPersona = promise.id;
+      }
+    }
     if (d.role === "user" && !d.partial) {
       // Deterministic hand-off. The reply already in flight belongs to the
       // current persona (its voice is read when the reply is synthesized, so
@@ -1865,6 +1918,11 @@ async function doStart(audioContext = null) {
       replyAfterResponse = false;
       if (client === c) c.requestResponse();
     }
+    if (promisedPersona && !switchedThisResponse && promisedPersona !== currentPersonaId()) {
+      applyPersona(promisedPersona, "promised");
+    }
+    promisedPersona = null;
+    switchedThisResponse = false;
   });
   c.addEventListener("error", (e) => {
     const detail = /** @type {CustomEvent<{ error: unknown }>} */ (e).detail;
