@@ -17,11 +17,11 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v61";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v62";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v61";
-import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v61";
-import { Ambience } from "./ui/ambience.js?v=audio-24k-v61";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v62";
+import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v62";
+import { Ambience } from "./ui/ambience.js?v=audio-24k-v62";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -60,7 +60,8 @@ const PERSONA_HANDOFF =
   + " a place that is not where the user is): it returns Google ratings and official health"
   + " inspection scores; read out the top two or three with both. For anything about one"
   + " particular restaurant, call restaurant_details, which shows a card; never web search for"
-  + " restaurants unless those tools find nothing."
+  + " restaurants unless those tools find nothing. When the user asks to see a card again or the"
+  + " previous card, call show_card."
   + " For one place's inspection history, scores over time or violations, call"
   + " restaurant_inspections and read out the recent scores with their dates. For a phone number,"
   + " website or opening hours, call restaurant_details. Call place_call only when the user asks"
@@ -267,6 +268,25 @@ const TOOL_DEFS = {
         area: { type: "string", description: "Town, street or zip: always when the place was not in an earlier result, or when a name has several locations." },
       },
       required: ["name"],
+    },
+  },
+  show_card: {
+    type: "function",
+    name: "show_card",
+    description:
+      "Put a card that was shown earlier on this screen back up: a restaurant list, one restaurant's " +
+      "details, its health inspections, a link, or an on-screen note. Use it whenever the user asks " +
+      "to see a card again, bring it back, or see the previous one; nothing is looked up and no " +
+      "other tool is needed, even if you do not remember the card yourself. Say in a few words " +
+      "that it is back; do not read it out.",
+    parameters: {
+      type: "object",
+      properties: {
+        which: {
+          type: "string",
+          description: "\"last\" (default) for the most recent card, \"previous\" for the one before it, or words from the card's name or title, e.g. \"Bulloch House\".",
+        },
+      },
     },
   },
   place_call: {
@@ -1116,7 +1136,7 @@ function activeToolDefs() {
   const defs = [];
   defs.push(TOOL_DEFS.switch_persona);
   // Deterministic, keyless, always on: the model must not count days or do sums itself.
-  defs.push(LOCAL_TOOL_DEFS.date_math, LOCAL_TOOL_DEFS.calculate, TOOL_DEFS.set_listening, TOOL_DEFS.show_on_screen);
+  defs.push(LOCAL_TOOL_DEFS.date_math, LOCAL_TOOL_DEFS.calculate, TOOL_DEFS.set_listening, TOOL_DEFS.show_on_screen, TOOL_DEFS.show_card);
   const sounds = ambienceSettings.on ? ambience.soundsFor(currentPersonaId() ?? "") : [];
   if (sounds.length) {
     defs.push({
@@ -1733,6 +1753,8 @@ async function runTool(name, argsJson, callId) {
     } else if (name === "restaurant_details") {
       const det = await execDetails(args);
       result = { output: det.text, cards: det.found ? [det] : [] };
+    } else if (name === "show_card") {
+      result.output = showCardAgain(typeof args.which === "string" ? args.which : "");
     } else if (name === "place_call") {
       result.output = placeCall(args);
     } else if (name === "play_sound") {
@@ -1882,6 +1904,50 @@ async function execDetails(args) {
   if (det.found) rememberPlaces([det]);
   return det;
 }
+
+// ── Recent cards ─────────────────────────────────────────────────────────────
+// Every card shown on this page, newest last, kept in the page itself so the
+// show_card tool can bring one back after a bystander's remark pushed it out,
+// or after a reconnect emptied the model's memory of it.
+const RECENT_CARDS_MAX = 12;
+/** @type {{ name: string, label: string, cards: unknown[], at: number }[]} */
+const recentCards = [];
+/** @param {string} name @param {string} argsJson @param {unknown[]} cards */
+function rememberCards(name, argsJson, cards) {
+  if (name === "show_card") return;
+  /** @type {any} */
+  let args = {};
+  try { args = JSON.parse(argsJson || "{}"); } catch { /* label without them */ }
+  const first = /** @type {any} */ (cards[0]) ?? {};
+  const subject = name === "find_restaurants" ? [args.query, args.area].filter(Boolean).join(" near ")
+    : name === "show_on_screen" ? (first.title || args.title || "note")
+    : (first.name || args.name || "");
+  const kind = { find_restaurants: "Restaurants", restaurant_details: "Details", restaurant_inspections: "Health inspections", open_page: "Link", show_on_screen: "On screen" }[name] ?? name;
+  recentCards.push({ name, label: subject ? `${kind}: ${subject}` : kind, cards, at: Date.now() });
+  if (recentCards.length > RECENT_CARDS_MAX) recentCards.shift();
+}
+/** The show_card tool: pick a remembered card and put it back, pinned. @param {string} which */
+function showCardAgain(which) {
+  if (!recentCards.length) return "No card has been shown on this page yet.";
+  const w = which.trim().toLowerCase();
+  let entry;
+  if (!w || w === "last" || w === "latest" || w === "current") entry = recentCards.at(-1);
+  else if (w === "previous" || w === "earlier" || w === "before") entry = recentCards.at(-2) ?? recentCards.at(-1);
+  else {
+    const words = w.split(/[^a-z0-9]+/).filter(Boolean);
+    entry = [...recentCards].reverse().find((e) => words.every((x) => e.label.toLowerCase().includes(x)))
+      ?? [...recentCards].reverse().find((e) => words.some((x) => x.length > 3 && e.label.toLowerCase().includes(x)));
+  }
+  if (!entry) {
+    const list = recentCards.slice(-5).reverse().map((e) => e.label).join("; ");
+    return `No card matches ${JSON.stringify(which)}. Cards shown, newest first: ${list}. Ask which one, or call show_card again with one of these.`;
+  }
+  const mins = Math.round((Date.now() - entry.at) / 60000);
+  const ago = mins < 1 ? "a moment ago" : mins === 1 ? "a minute ago" : `${mins} minutes ago`;
+  if (!chat.recallCards(entry.name, entry.cards)) return "That card cannot be shown again.";
+  return `Back on screen: ${entry.label} (first shown ${ago}). Say so in a few words; do not read it out.`;
+}
+if (DEBUG) { const w = /** @type {any} */ (window); w.__recentCards = recentCards; w.__chat = chat; w.__showCardAgain = showCardAgain; }
 
 /** Places seen in this session's results, newest first (for open_page and the cards). @type {any[]} */
 let recentPlaces = [];
@@ -2653,6 +2719,7 @@ async function doStart(audioContext = null) {
     executeTool: async ({ name, arguments: args, callId }) => {
       if (name !== "switch_persona" && name !== "play_sound") chat.onToolCall(name); // the switch announces itself; a sound is heard
       const result = await runTool(name, args, callId);
+      if (result.cards?.length) rememberCards(name, args, result.cards);
       if (client === c) chat.onToolResult(name, args, result.output, result.image, result.cards);
       return result;
     },

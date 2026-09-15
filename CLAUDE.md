@@ -148,7 +148,7 @@ _Update at the end of a session that changed something._
   model / Warming up the voice; 25 s fail-safe), and assistant bubbles now
   stay while speaker output is audible (client emits `output-level`; chat
   view bumps the bubble's expiry, fades 3 s after the last word). Assets are
-  cache-busted with `?v=audio-24k-v61` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
+  cache-busted with `?v=audio-24k-v62` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
   editing demo JS/CSS or browsers keep the old files.
 - 2026-09-14 (tools): the LLM handler now parses the model's native
   `<tool_call><function=…><parameter=…>` XML blocks as well as the prompted
@@ -658,6 +658,22 @@ _Update at the end of a session that changed something._
   Bulloch House at 0.7 mi with three neighbours; its details carry 4.4 from
   1707 reviews. Bulloch House has no DPH score on file (Meriwether County
   is not matched by name in the portal; unverified whether it is listed).
+- 2026-09-15 (cards again + spelling slack): during a demo a bystander's
+  remark pushed the Bulloch House card out (the bubble stack keeps three),
+  and "show it again" after a reconnect failed: the new session had no
+  memory of Warm Springs, Parakeet spelled it "Bullock", and the exact-word
+  matcher rejected both the hour-old cached place and Google's candidate.
+  Now: `show_card` tool {which: last | previous | words from the card's
+  label}, always on, backed by a page-side stack of the last 12 cards
+  (`recentCards` in demo/main.js, kept across reconnects, cleared on
+  reload); a recalled card is pinned (`chat.recallCards`): two minutes on
+  screen, never evicted by newer bubbles, and it does not hold newer
+  bubbles back; only a newer card or its × removes it. The tool result
+  names the card ("Back on screen: Details: Bulloch House"), so the model
+  need not remember it. `name_matches` in demo/restaurants.py now lets a
+  word of six letters or more be one edit off ("bullock" ~ "bulloch");
+  short words stay exact. Checked in the Claude Browser pane with the
+  debug hooks (`s2s.debug=1`: `__chat`, `__recentCards`, `__showCardAgain`).
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache

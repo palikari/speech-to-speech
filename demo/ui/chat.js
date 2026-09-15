@@ -115,6 +115,8 @@ const ASSISTANT_LINGER_AFTER_SPEECH_MS = 3000;
 /** A cards bubble (restaurant results) is something to look at, not just read: it stays
  *  while the reply is spoken and well after, unless the user dismisses it. */
 const CARDS_LINGER_MS = 45000;
+const CARDS_RECALLED_LINGER_MS = 120000; // a card the user asked to see again stays longer
+const CARD_TITLES = { find_restaurants: "Restaurants", restaurant_inspections: "Health inspections", restaurant_details: "Details", open_page: "Link", show_on_screen: "On screen" };
 const CARDS_LINGER_AFTER_SPEECH_MS = 25000;
 // Breeze vocal cues the model may emit; spoken, but not worth showing as text.
 const VOCAL_CUE_RE = /\((?:laugh|chuckle|sigh|clears throat|cough)\)\s*/gi;
@@ -297,7 +299,8 @@ export class ChatView {
     // actively updating (the live user bubble) — drop the next-oldest instead.
     const visible = /** @type {HTMLElement[]} */ ([...this._bubbleStack.querySelectorAll(".bubble:not(.out)")]);
     if (visible.length > 3) {
-      this._dismissBubble(visible.find((b) => b !== this._activeUserBubble) ?? visible[0]);
+      // A recalled card is pinned: a bystander's remark must not push it out.
+      this._dismissBubble(visible.find((b) => b !== this._activeUserBubble && !b.classList.contains("pinned")) ?? visible[0]);
     }
     requestAnimationFrame(() => el.classList.add("in"));
     return el;
@@ -378,6 +381,12 @@ export class ChatView {
     let nextWake = Infinity;
     for (const el of visible) {
       const exp = this._bubbleExpiry.get(el) ?? now; // no expiry recorded → treat as due
+      if (el.classList.contains("pinned")) {
+        // Pinned cards live on their own clock and never hold newer bubbles back.
+        if (exp <= now) this._dismissBubble(el);
+        else nextWake = Math.min(nextWake, exp);
+        continue;
+      }
       if (exp <= now) {
         this._dismissBubble(el);
       } else {
@@ -839,14 +848,25 @@ export class ChatView {
 
   /** Show a tool's structured rows as a live bubble on the assistant's side, with a dismiss button.
    *  @param {string} title @param {string} html */
-  _spawnCardsBubble(title, html, wide = false) {
+  _spawnCardsBubble(title, html, wide = false, pinned = false) {
     if (this._cardsBubble?.isConnected) this._dismissBubble(this._cardsBubble); // one at a time
     const el = this._spawnBubble("cards", `<div class="bubble-cards-head"><span class="bubble-role">${escHtml(title)}</span><button class="bubble-close" type="button" aria-label="Dismiss">×</button></div>${html}`);
     if (wide) el.classList.add("wide");
+    if (pinned) el.classList.add("pinned");
     el.querySelector(".bubble-close")?.addEventListener("click", () => this._dismissBubble(el));
     this._cardsBubble = el;
-    this._bumpDismiss(el, CARDS_LINGER_MS);
+    this._bumpDismiss(el, pinned ? CARDS_RECALLED_LINGER_MS : CARDS_LINGER_MS);
     return el;
+  }
+
+  /** Put a card shown earlier back on screen, pinned: it stays two minutes and only a
+   *  newer card or the dismiss button removes it. Returns whether anything rendered.
+   *  @param {string} name the tool that produced the card @param {unknown} cards */
+  recallCards(name, cards) {
+    const html = renderToolCards(name, cards);
+    if (!html) return false;
+    this._spawnCardsBubble(CARD_TITLES[name] ?? name, html, name === "show_on_screen", true);
+    return true;
   }
 
   /**
@@ -925,8 +945,7 @@ export class ChatView {
     this._appendHistTool(name, argsJson, output, cards);
     if (image) this._appendHistImage(image); // show the captured frame below the call
     const html = renderToolCards(name, cards);
-    const titles = { find_restaurants: "Restaurants", restaurant_inspections: "Health inspections", restaurant_details: "Details", open_page: "Link", show_on_screen: "On screen" };
-    if (html) this._spawnCardsBubble(titles[name] ?? name, html, name === "show_on_screen");
+    if (html) this._spawnCardsBubble(CARD_TITLES[name] ?? name, html, name === "show_on_screen");
     this._markUnread();
   }
 }

@@ -159,9 +159,9 @@ const good = await setupAudio({
   kind: "capture-config",
   inputRate: 48000,
   outputRate: 24000,
-  version: "audio-24k-v61",
+  version: "audio-24k-v62",
 });
-if (good.modules.length !== 2 || good.modules.some((url) => !url.endsWith("?v=audio-24k-v61"))) {
+if (good.modules.length !== 2 || good.modules.some((url) => !url.endsWith("?v=audio-24k-v62"))) {
   throw new Error(`audio worklets were not versioned: ${JSON.stringify(good.modules)}`);
 }
 const capture = good.nodes.find((node) => node.name === "mic-capture");

@@ -537,11 +537,40 @@ def _date_key(raw: str) -> tuple:
     return (int(m.group(3)), int(m.group(1)), int(m.group(2))) if m else (0, 0, 0)
 
 
+def _one_edit_apart(a: str, b: str) -> bool:
+    """Levenshtein distance at most 1 (one substitution, insertion or deletion)."""
+    if a == b:
+        return True
+    if abs(len(a) - len(b)) > 1:
+        return False
+    if len(a) == len(b):
+        return sum(x != y for x, y in zip(a, b)) == 1
+    short, long_ = (a, b) if len(a) < len(b) else (b, a)
+    for i in range(len(long_)):
+        if long_[:i] + long_[i + 1 :] == short:
+            return True
+    return False
+
+
+SLACK_MIN_LETTERS = 6  # words this long may differ by one letter (transcription: "bullock" for "bulloch")
+
+
+def _word_close(asked: str, portal: str) -> bool:
+    """`asked` is a prefix of `portal`, or (long words only) one letter off from it or its prefix."""
+    if portal.startswith(asked):
+        return True
+    if len(asked) < SLACK_MIN_LETTERS:
+        return False
+    return _one_edit_apart(asked, portal) or _one_edit_apart(asked, portal[: len(asked)])
+
+
 def name_matches(asked: str, portal_name: str) -> bool:
-    """Every word of the asked name (joiners aside) appears in the portal name, as a word prefix."""
+    """Every word of the asked name (joiners aside) appears in the portal name, as a word
+    prefix; a word of six letters or more may be one letter off, since the name arrives
+    through speech recognition ("Bullock House" for Bulloch House)."""
     asked_words = [w for w in re.findall(r"[a-z0-9']+", asked.lower()) if w not in _JOINERS]
     portal_words = re.findall(r"[a-z0-9']+", portal_name.lower())
-    return bool(asked_words) and all(any(pw.startswith(aw) for pw in portal_words) for aw in asked_words)
+    return bool(asked_words) and all(any(_word_close(aw, pw) for pw in portal_words) for aw in asked_words)
 
 
 def _cached_rows_matching(name: str) -> list[dict]:

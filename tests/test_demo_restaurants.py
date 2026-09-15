@@ -231,6 +231,11 @@ def test_name_matching_rejects_lookalikes_and_area_prefers_street_or_zip():
     assert restaurants.name_matches("Thai Squared", "Thai Squared")
     assert not restaurants.name_matches("Nowhere Grill", "Nowhere Bar")
     assert not restaurants.name_matches("", "Anything")
+    # One letter of slack on long words only: speech recognition spelled it "Bullock".
+    assert restaurants.name_matches("Bullock House", "Bulloch House")
+    assert restaurants.name_matches("Bulloch", "BULLOCH HOUSE RESTAURANT")
+    assert not restaurants.name_matches("Thao Squared", "Thai Squared")  # short words stay exact
+    assert not restaurants.name_matches("Bullocks Steakhouse", "Bulloch House")
 
 
 @pytest.mark.asyncio
