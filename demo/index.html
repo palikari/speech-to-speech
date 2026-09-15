@@ -11,7 +11,7 @@
       rel="stylesheet"
     />
     <link rel="icon" type="image/svg+xml" href="favicon.svg?v=4" />
-    <link rel="stylesheet" href="style.css?v=audio-24k-v47" />
+    <link rel="stylesheet" href="style.css?v=audio-24k-v48" />
   </head>
   <!--
     `booting` disables transitions/animations until the first paint commits.
@@ -331,6 +331,10 @@
                 <span>Your name</span>
                 <input id="profile-name" type="text" placeholder="How the assistant should address you" autocomplete="off" spellcheck="false" />
               </label>
+              <label class="field profile-check">
+                <input id="profile-nickname-ok" type="checkbox" />
+                <span>Nicknames are fine (off: use the name exactly as written)</span>
+              </label>
               <label class="field">
                 <span>Pronouns</span>
                 <input id="profile-pronouns" type="text" placeholder="Optional, e.g. he/him" autocomplete="off" spellcheck="false" />
@@ -500,6 +504,6 @@
     </dialog>
 
     <script src="vendor/openai-realtime-agents.umd.js"></script>
-    <script type="module" src="main.js?v=audio-24k-v47"></script>
+    <script type="module" src="main.js?v=audio-24k-v48"></script>
   </body>
 </html>

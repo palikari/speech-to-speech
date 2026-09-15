@@ -48,3 +48,13 @@ def test_birthday_formats():
     assert format_birthday("--03-12") == "12 March"
     assert format_birthday("13-40") is None
     assert format_birthday("mid March") == "mid March"
+
+
+def test_name_is_used_as_given_unless_nicknames_are_allowed():
+    exact = profile_lines(parse_user_profile(_session({"s2s_user": {"name": "Michael"}})))
+    assert (
+        "Name: Michael (address them by it when natural; use it exactly as written, no nicknames or short forms)."
+        in exact
+    )
+    loose = profile_lines(parse_user_profile(_session({"s2s_user": {"name": "Michael", "nickname_ok": True}})))
+    assert "a nickname or short form is fine" in loose

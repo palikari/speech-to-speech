@@ -43,6 +43,8 @@ def parse_user_profile(session: Any) -> dict[str, str]:
         value = raw.get(key)
         if isinstance(value, str) and value.strip():
             out[key] = " ".join(value.split())[:400]
+    if out.get("name") and raw.get("nickname_ok") is True:
+        out["nickname_ok"] = "yes"
     return out
 
 
@@ -61,7 +63,12 @@ def format_birthday(raw: str) -> Optional[str]:
 def profile_lines(profile: dict[str, str]) -> str:
     facts = []
     if profile.get("name"):
-        facts.append(f"Name: {profile['name']} (address them by it when natural).")
+        how = (
+            "a nickname or short form is fine"
+            if profile.get("nickname_ok")
+            else "use it exactly as written, no nicknames or short forms"
+        )
+        facts.append(f"Name: {profile['name']} (address them by it when natural; {how}).")
     if profile.get("pronouns"):
         facts.append(f"Pronouns: {profile['pronouns']}.")
     birthday = format_birthday(profile["birthday"]) if profile.get("birthday") else None

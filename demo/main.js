@@ -17,10 +17,10 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v47";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v48";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v47";
-import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v47";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v48";
+import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v48";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -391,14 +391,15 @@ function loadGateThreshold() {
   return Math.min(GATE_MAX_DB, Math.max(GATE_OFF_DB, Math.round(raw)));
 }
 
-/** @typedef {{ name: string, pronouns: string, birthday: string, address: string, notes: string }} Profile */
+/** @typedef {{ name: string, pronouns: string, birthday: string, address: string, notes: string, nicknameOk: boolean }} Profile */
 const PROFILE_KEYS = /** @type {const} */ (["name", "pronouns", "birthday", "address", "notes"]);
 /** @returns {Profile} */
 function loadProfile() {
-  const empty = { name: "", pronouns: "", birthday: "", address: "", notes: "" };
+  const empty = { name: "", pronouns: "", birthday: "", address: "", notes: "", nicknameOk: false };
   try {
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEYS.profile) || "{}");
     for (const k of PROFILE_KEYS) if (typeof raw[k] === "string") empty[k] = raw[k].trim();
+    empty.nicknameOk = raw.nicknameOk === true;
   } catch { /* fresh */ }
   return empty;
 }
@@ -417,7 +418,9 @@ function areaFromAddress(address) {
 function profilePayload() {
   const p = profile;
   const user = { name: p.name, pronouns: p.pronouns, birthday: p.birthday, area: areaFromAddress(p.address), notes: p.notes };
-  return { s2s_user: Object.fromEntries(Object.entries(user).filter(([, v]) => v)) };
+  const s2s_user = Object.fromEntries(Object.entries(user).filter(([, v]) => v));
+  if (p.name) s2s_user.nickname_ok = p.nicknameOk;
+  return { s2s_user };
 }
 let profile = loadProfile();
 
@@ -598,6 +601,7 @@ const profileInputs = {
   address: /** @type {HTMLInputElement} */ ($("#profile-address")),
   notes: /** @type {HTMLTextAreaElement} */ ($("#profile-notes")),
 };
+const profileNicknameOk = /** @type {HTMLInputElement} */ ($("#profile-nickname-ok"));
 
 /** @type {AppState} */
 let currentState = "idle";
@@ -1086,6 +1090,7 @@ function openSettings() {
   inputVoice.value = settings.voice;
   inputInstructions.value = settings.instructions;
   for (const k of PROFILE_KEYS) profileInputs[k].value = profile[k];
+  profileNicknameOk.checked = profile.nicknameOk;
   syncPersonaSelect();
   const savedMode = settings.personaMode || (currentPersonaId() ? "preset" : "custom");
   setPersonaMode(savedMode);
@@ -2045,7 +2050,10 @@ settingsForm.addEventListener("submit", (event) => {
 
   settings = readSettingsFromForm();
   saveSettings(settings);
-  profile = /** @type {Profile} */ (Object.fromEntries(PROFILE_KEYS.map((k) => [k, profileInputs[k].value.trim()])));
+  profile = /** @type {Profile} */ ({
+    ...Object.fromEntries(PROFILE_KEYS.map((k) => [k, profileInputs[k].value.trim()])),
+    nicknameOk: profileNicknameOk.checked,
+  });
   saveProfile(profile);
 
   // Voice + instructions can apply to a live session without reconnecting; a

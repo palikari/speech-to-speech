@@ -148,7 +148,7 @@ _Update at the end of a session that changed something._
   model / Warming up the voice; 25 s fail-safe), and assistant bubbles now
   stay while speaker output is audible (client emits `output-level`; chat
   view bumps the bubble's expiry, fades 3 s after the last word). Assets are
-  cache-busted with `?v=audio-24k-v47` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
+  cache-busted with `?v=audio-24k-v48` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
   editing demo JS/CSS or browsers keep the old files.
 - 2026-09-14 (tools): the LLM handler now parses the model's native
   `<tool_call><function=…><parameter=…>` XML blocks as well as the prompted
@@ -537,6 +537,8 @@ _Update at the end of a session that changed something._
   geocodes it once (Places text search, location field only, cached a
   week). Live: name used, 178 days to the birthday via date_math, metric
   units from the notes, and with no profile she asks rather than guesses.
+  "Nicknames are fine" checkbox (off by default): off tells the model to use
+  the name exactly as written; she had shortened Michael to Mike on her own.
 - 2026-09-15 (privacy note): reviewed https://ollama.com/privacy (March
   2026): cloud requests processed transiently, not stored, not used for
   training, usage metadata only; subprocessors ("infrastructure and

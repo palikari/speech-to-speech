@@ -2962,3 +2962,8 @@ body.cam-on .footer {
 
 /* ── Privacy note under the profile fields ──────────────────────────────── */
 .privacy-note { display: block; margin-top: 6px; padding: 8px 10px; border-left: 2px solid var(--border-strong); color: var(--text-faint); line-height: 1.45; }
+
+/* ── Checkbox row inside the profile fields ─────────────────────────────── */
+.field.profile-check { flex-direction: row; align-items: center; gap: 10px; }
+.field.profile-check input { width: auto; margin: 0; }
+.field.profile-check span { font-size: 12px; color: var(--text-dim); }
