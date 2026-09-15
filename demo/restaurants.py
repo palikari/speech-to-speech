@@ -140,6 +140,9 @@ class RestaurantsRequest(BaseModel):
     query: str
     lat: Optional[float] = None
     lng: Optional[float] = None
+    # A place to search around when the browser shared no coordinates (the
+    # user's home address from their profile); geocoded once and cached.
+    near: Optional[str] = None
     radius_m: int = Field(default=DEFAULT_RADIUS_M, ge=500, le=50000)
     open_now: bool = False
     sort_by: str = "rating"
@@ -349,7 +352,7 @@ def format_line(i: int, r: dict) -> str:
 
 
 def format_text(req: RestaurantsRequest, results: list[dict]) -> str:
-    where = " near you" if req.lat is not None else ""
+    where = " near home" if req.near and req.lat is not None else " near you" if req.lat is not None else ""
     head = f"Restaurants for {req.query!r}{where}, sorted by {req.sort_by}"
     filters = []
     if req.open_now:
@@ -640,12 +643,39 @@ async def inspection_history(req: InspectionsRequest) -> dict:
     }
 
 
+_geocode_cache: dict[str, tuple[float, Optional[tuple[float, float]]]] = {}
+GEOCODE_CACHE_TTL_S = 7 * 24 * 3600
+
+
+async def geocode(client: httpx.AsyncClient, address: str) -> Optional[tuple[float, float]]:
+    """Coordinates for an address via a Places text search (location only)."""
+    key = " ".join(address.lower().split())
+    hit = _geocode_cache.get(key)
+    if hit and time.monotonic() - hit[0] < GEOCODE_CACHE_TTL_S:
+        return hit[1]
+    headers = {"Content-Type": "application/json", "X-Goog-Api-Key": PLACES_KEY, "X-Goog-FieldMask": "places.location"}
+    resp = await client.post(
+        PLACES_SEARCH_URL, headers=headers, json={"textQuery": address, "maxResultCount": 1}, timeout=15.0
+    )
+    loc = None
+    if resp.status_code == 200:
+        places = resp.json().get("places") or []
+        if places and places[0].get("location"):
+            loc = (places[0]["location"]["latitude"], places[0]["location"]["longitude"])
+    _geocode_cache[key] = (time.monotonic(), loc)
+    return loc
+
+
 async def find_restaurants(req: RestaurantsRequest) -> dict:
     if not PLACES_KEY:
         raise RuntimeError("Restaurant search is not configured.")
     sort_by = req.sort_by if req.sort_by in SORTS else "rating"
     req = req.model_copy(update={"sort_by": sort_by})
     async with httpx.AsyncClient() as client:
+        if (req.lat is None or req.lng is None) and req.near:
+            loc = await geocode(client, req.near)
+            if loc:
+                req = req.model_copy(update={"lat": loc[0], "lng": loc[1]})
         places = [p for p in await places_search(client, req) if p["operational"]]
         sem = asyncio.Semaphore(HEALTH_CONCURRENCY)
 

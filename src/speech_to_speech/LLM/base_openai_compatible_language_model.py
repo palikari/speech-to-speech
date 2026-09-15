@@ -39,6 +39,7 @@ from speech_to_speech.LLM.chat import (
 )
 from speech_to_speech.LLM.clock import with_clock
 from speech_to_speech.LLM.compaction_prompt import CompactGenerateFn, build_compactor
+from speech_to_speech.LLM.profile import with_profile
 from speech_to_speech.LLM.text_prompt import build_text_system_prompt
 from speech_to_speech.LLM.utils import (
     language_name_for_prompt,
@@ -1018,7 +1019,10 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
         )
         wants_audio = response_wants_audio(response)
         self._apply_config(
-            active_chat, with_clock(instructions, runtime_config.session), wants_audio, language_name=lang_name
+            active_chat,
+            with_clock(with_profile(instructions, runtime_config.session), runtime_config.session),
+            wants_audio,
+            language_name=lang_name,
         )
 
         audio_b64 = self._audio_to_wav_base64(request.audio, request.audio_sample_rate)
@@ -1157,7 +1161,10 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
         )
         wants_audio = response_wants_audio(response)
         self._apply_config(
-            active_chat, with_clock(instructions, runtime_config.session), wants_audio, language_name=lang_name
+            active_chat,
+            with_clock(with_profile(instructions, runtime_config.session), runtime_config.session),
+            wants_audio,
+            language_name=lang_name,
         )
 
         optional_kwargs = self._build_optional_kwargs(req_tools, req_tool_choice)

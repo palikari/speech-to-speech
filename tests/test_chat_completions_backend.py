@@ -1089,3 +1089,27 @@ def test_wake_gate_declined_turn_is_sealed_against_reopen():
     tracker.observe("turn_1", 0)  # the VAD registers the turn before the LLM sees it
     list(handler.process(GenerateResponseRequest(runtime_config=rc, turn_id="turn_1", turn_revision=0)))
     assert tracker.is_committed("turn_1", 0)  # the next utterance starts a new turn
+
+
+def test_system_prompt_carries_the_user_profile_and_no_assumptions_rule():
+    handler = _make_handler()
+    handler.client.chat.completions.next_result = _FakeStream([_chunk(content="Sure.")])
+    chat = Chat(10)
+    chat.add_item(make_user_message("Hi"))
+    session = RealtimeSessionCreateRequest.model_validate(
+        {"type": "realtime", "instructions": "Be brief.", "s2s_user": {"name": "Michael", "area": "Alpharetta, GA"}}
+    )
+    list(
+        handler.process(
+            GenerateResponseRequest(
+                runtime_config=RuntimeConfig(chat=chat, session=session), turn_id="t", turn_revision=0
+            )
+        )
+    )
+    system = handler.client.chat.completions.last_kwargs["messages"][0]["content"]
+    assert (
+        "Name: Michael" in system
+        and "Home area: Alpharetta, GA" in system
+        and "Do not assume the user's gender" in system
+    )
+    assert system.index("About the user") < system.index("Current date and time")  # profile, then clock

@@ -17,10 +17,10 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v45";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v46";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v45";
-import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v45";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v46";
+import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v46";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -150,6 +150,7 @@ const STORAGE_KEYS = {
   instructions: "s2s.ws.instructions",
   personaMode: "s2s.ws.personaMode", // "preset" | "custom"
   wake: "s2s.wake", // "1" when the assistant only answers when called by name
+  profile: "s2s.profile", // JSON: who the user is, in their own words (this browser only)
   tools: "s2s.ws.tools",
   searchKey: "s2s.ws.searchKey",
   noiseGate: "s2s.ws.noiseGate",
@@ -390,6 +391,36 @@ function loadGateThreshold() {
   return Math.min(GATE_MAX_DB, Math.max(GATE_OFF_DB, Math.round(raw)));
 }
 
+/** @typedef {{ name: string, pronouns: string, birthday: string, address: string, notes: string }} Profile */
+const PROFILE_KEYS = /** @type {const} */ (["name", "pronouns", "birthday", "address", "notes"]);
+/** @returns {Profile} */
+function loadProfile() {
+  const empty = { name: "", pronouns: "", birthday: "", address: "", notes: "" };
+  try {
+    const raw = JSON.parse(localStorage.getItem(STORAGE_KEYS.profile) || "{}");
+    for (const k of PROFILE_KEYS) if (typeof raw[k] === "string") empty[k] = raw[k].trim();
+  } catch { /* fresh */ }
+  return empty;
+}
+/** @param {Profile} p */
+function saveProfile(p) {
+  localStorage.setItem(STORAGE_KEYS.profile, JSON.stringify(p));
+}
+/** The city/state part of a home address: everything after the street, or a bare place name.
+ *  @param {string} address */
+function areaFromAddress(address) {
+  const parts = address.split(",").map((x) => x.trim()).filter(Boolean);
+  if (parts.length >= 2) return parts.slice(1).join(", ");
+  return /^\d/.test(address.trim()) ? "" : address.trim();
+}
+/** What the server (and so the model) is told: name, pronouns, birthday, area, notes. Never the street. */
+function profilePayload() {
+  const p = profile;
+  const user = { name: p.name, pronouns: p.pronouns, birthday: p.birthday, area: areaFromAddress(p.address), notes: p.notes };
+  return { s2s_user: Object.fromEntries(Object.entries(user).filter(([, v]) => v)) };
+}
+let profile = loadProfile();
+
 /** @param {ReturnType<typeof loadSettings>} s */
 function saveSettings(s) {
   localStorage.setItem(STORAGE_KEYS.directUrl, s.directUrl);
@@ -560,6 +591,13 @@ const restartBtn = $("#restart-conversation");
 /** @type {HTMLElement} */
 const restartHint = $("#restart-hint");
 const settingsForm = /** @type {HTMLFormElement} */ (settingsModal.querySelector("form"));
+const profileInputs = {
+  name: /** @type {HTMLInputElement} */ ($("#profile-name")),
+  pronouns: /** @type {HTMLInputElement} */ ($("#profile-pronouns")),
+  birthday: /** @type {HTMLInputElement} */ ($("#profile-birthday")),
+  address: /** @type {HTMLInputElement} */ ($("#profile-address")),
+  notes: /** @type {HTMLTextAreaElement} */ ($("#profile-notes")),
+};
 
 /** @type {AppState} */
 let currentState = "idle";
@@ -736,6 +774,8 @@ function wakeConfigPayload() {
   return {
     // The server stamps the current date and time into the prompt in this zone.
     s2s_clock: { tz: Intl.DateTimeFormat().resolvedOptions().timeZone },
+    // Who the user is, in their own words (sent whenever the wake config is).
+    ...profilePayload(),
     s2s_wake: {
       enabled: wakeEnabled,
       words: current ? wakeWordsFor(current) : [],
@@ -1045,6 +1085,7 @@ function openSettings() {
   syncConnectionUi();
   inputVoice.value = settings.voice;
   inputInstructions.value = settings.instructions;
+  for (const k of PROFILE_KEYS) profileInputs[k].value = profile[k];
   syncPersonaSelect();
   const savedMode = settings.personaMode || (currentPersonaId() ? "preset" : "custom");
   setPersonaMode(savedMode);
@@ -1556,6 +1597,7 @@ async function execFindRestaurants(args) {
   /** @type {Record<string, unknown>} */
   const body = { query };
   if (pos) { body.lat = pos.lat; body.lng = pos.lng; }
+  else if (profile.address) body.near = profile.address; // home, when location is not shared
   for (const k of ["sort_by", "open_now", "min_rating", "min_health_score", "max_results"]) {
     if (args[k] !== undefined && args[k] !== null && args[k] !== "") body[k] = args[k];
   }
@@ -1572,7 +1614,7 @@ async function execFindRestaurants(args) {
   const json = await res.json();
   const results = Array.isArray(json.results) ? json.results : [];
   rememberPlaces(results);
-  const note = pos ? "" : "\n(Location not shared: results are for the area named in the query.)";
+  const note = pos ? "" : profile.address ? "\n(Location not shared: results are around the user's home.)" : "\n(Location not shared: results are for the area named in the query.)";
   return { text: `${json.text}${note}`, results };
 }
 
@@ -2003,6 +2045,8 @@ settingsForm.addEventListener("submit", (event) => {
 
   settings = readSettingsFromForm();
   saveSettings(settings);
+  profile = /** @type {Profile} */ (Object.fromEntries(PROFILE_KEYS.map((k) => [k, profileInputs[k].value.trim()])));
+  saveProfile(profile);
 
   // Voice + instructions can apply to a live session without reconnecting; a
   // changed connection URL only takes effect on the next restart. Speaker

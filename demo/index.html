@@ -11,7 +11,7 @@
       rel="stylesheet"
     />
     <link rel="icon" type="image/svg+xml" href="favicon.svg?v=4" />
-    <link rel="stylesheet" href="style.css?v=audio-24k-v45" />
+    <link rel="stylesheet" href="style.css?v=audio-24k-v46" />
   </head>
   <!--
     `booting` disables transitions/animations until the first paint commits.
@@ -326,6 +326,34 @@
               </label>
             </div>
 
+            <div class="field-group" id="profile-fields">
+              <label class="field">
+                <span>Your name</span>
+                <input id="profile-name" type="text" placeholder="How the assistant should address you" autocomplete="off" spellcheck="false" />
+              </label>
+              <label class="field">
+                <span>Pronouns</span>
+                <input id="profile-pronouns" type="text" placeholder="Optional, e.g. he/him" autocomplete="off" spellcheck="false" />
+              </label>
+              <label class="field">
+                <span>Birthday</span>
+                <input id="profile-birthday" type="text" placeholder="YYYY-MM-DD, or MM-DD to leave out the year" autocomplete="off" spellcheck="false" />
+              </label>
+              <label class="field">
+                <span>Home address</span>
+                <input id="profile-address" type="text" placeholder="Street, city, state zip" autocomplete="off" spellcheck="false" />
+              </label>
+              <label class="field">
+                <span>Notes for the assistant</span>
+                <textarea id="profile-notes" rows="2" placeholder="Anything it should know: diet, household names, preferences"></textarea>
+              </label>
+              <small>
+                Stored only in this browser. The assistant is told your name, pronouns, birthday and
+                city, which reach the language-model provider with each turn. The street address is
+                used only for nearby searches and directions and is never sent to the model.
+              </small>
+            </div>
+
             <label class="field">
               <span>Microphone</span>
               <select id="audio-input">
@@ -464,6 +492,6 @@
     </dialog>
 
     <script src="vendor/openai-realtime-agents.umd.js"></script>
-    <script type="module" src="main.js?v=audio-24k-v45"></script>
+    <script type="module" src="main.js?v=audio-24k-v46"></script>
   </body>
 </html>

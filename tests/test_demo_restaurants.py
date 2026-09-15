@@ -379,3 +379,42 @@ def test_places_carry_review_and_directions_links():
     assert p["directions_url"].startswith("https://www.google.com/maps/dir/?api=1&destination=Dee%20Thai%2010945")
     assert p["directions_url"].endswith("&destination_place_id=id-Dee Thai")
     assert restaurants.place_links("", "x", "y") == {"reviews_url": "", "directions_url": ""}
+
+
+@pytest.mark.asyncio
+async def test_home_address_is_geocoded_when_no_location_was_shared(monkeypatch):
+    calls = []
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def post(self, url, headers=None, json=None, timeout=None):
+            calls.append(json)
+            if headers["X-Goog-FieldMask"] == "places.location":
+                return httpx.Response(200, json={"places": [{"location": {"latitude": 34.07, "longitude": -84.27}}]})
+            return httpx.Response(
+                200, json={"places": [_place("Dee Thai", "10945", "State Bridge Rd", lat=34.03, lng=-84.20)]}
+            )
+
+        async def get(self, url, headers=None, timeout=None):
+            return httpx.Response(200, json=[])
+
+    monkeypatch.setattr(restaurants, "PLACES_KEY", "places-key")
+    monkeypatch.setattr(restaurants.httpx, "AsyncClient", FakeClient)
+    monkeypatch.setattr(restaurants, "health_cache", restaurants.HealthCache())
+    restaurants._geocode_cache.clear()
+    out = await restaurants.find_restaurants(
+        restaurants.RestaurantsRequest(query="thai", near="10945 State Bridge Rd, Alpharetta, GA")
+    )
+    assert (
+        calls[0]["textQuery"].startswith("10945 State Bridge Rd")
+        and calls[1]["locationBias"]["circle"]["center"]["latitude"] == 34.07
+    )
+    assert out["results"][0]["distance_mi"] is not None and "near home" in out["text"]

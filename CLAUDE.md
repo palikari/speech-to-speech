@@ -148,7 +148,7 @@ _Update at the end of a session that changed something._
   model / Warming up the voice; 25 s fail-safe), and assistant bubbles now
   stay while speaker output is audible (client emits `output-level`; chat
   view bumps the bubble's expiry, fades 3 s after the last word). Assets are
-  cache-busted with `?v=audio-24k-v45` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
+  cache-busted with `?v=audio-24k-v46` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
   editing demo JS/CSS or browsers keep the old files.
 - 2026-09-14 (tools): the LLM handler now parses the model's native
   `<tool_call><function=…><parameter=…>` XML blocks as well as the prompted
@@ -525,6 +525,18 @@ _Update at the end of a session that changed something._
   and a declined turn never gets the reply that would seal it. Both LLM
   handlers now `speculative_turns.commit()` the turn when the gate
   declines it, so the next utterance is a new turn.
+- 2026-09-15 (user profile): Settings > "About you": name, pronouns,
+  birthday (YYYY-MM-DD or MM-DD), home address, notes; stored in the browser
+  (`s2s.profile`). The page sends `s2s_user` {name, pronouns, birthday,
+  area, notes} with the wake config; `LLM/profile.py` `with_profile`
+  appends an "About the user" block (before the clock line) in both LLM
+  handlers, ending with the no-assumptions rule; with no profile the rule
+  stands alone ("Nothing is known about the user..."). The street address
+  never reaches the model: the page passes it as `near` to
+  `/api/restaurants` only when geolocation is not shared, and the server
+  geocodes it once (Places text search, location field only, cached a
+  week). Live: name used, 178 days to the birthday via date_math, metric
+  units from the notes, and with no profile she asks rather than guesses.
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache
