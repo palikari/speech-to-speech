@@ -17,11 +17,11 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v57";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v59";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v57";
-import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v57";
-import { Ambience } from "./ui/ambience.js?v=audio-24k-v57";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v59";
+import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v59";
+import { Ambience } from "./ui/ambience.js?v=audio-24k-v59";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -481,24 +481,51 @@ const ambienceBars = /** @type {HTMLElement[]} */ ([...ambienceMeter.querySelect
 let meterFrame = 0;
 let meterSmoothed = 0;
 let meterPeak = 0;
-function tickAmbienceMeter() {
-  meterFrame = 0;
-  const playing = ambience.isPlaying() && ambienceSettings.on;
-  if (!playing) {
+/** @param {string} text */
+function setMeterLabel(text) { if (ambienceMeterLabel.textContent !== text) ambienceMeterLabel.textContent = text; }
+/** The meter at rest: "ambience" with flat bars (idle, tap to start, or a persona with no bed). */
+function paintMeterIdle() {
+  ambienceMeter.classList.add("idle");
+  setMeterLabel("ambience");
+  for (const bar of ambienceBars) bar.style.transform = "scaleY(0.06)";
+  meterPeak = 0;
+  meterSmoothed = 0;
+}
+/** Show or hide the meter for the current ambience setting; it is visible whenever ambience is on. */
+function renderAmbienceMeter() {
+  if (!ambienceSettings.on) {
+    if (meterFrame) { cancelAnimationFrame(meterFrame); meterFrame = 0; }
     ambienceMeter.hidden = true;
-    meterPeak = 0;
-    meterSmoothed = 0;
-    // A bed that is still decoding (a few MB of mp3) is not "playing" yet: keep
-    // polling so the meter appears when it starts, instead of giving up.
-    if (ambienceSettings.on && ambience.expectsBed()) meterFrame = requestAnimationFrame(tickAmbienceMeter);
+    closeAmbiencePop();
     return;
   }
   ambienceMeter.hidden = false;
+  if (!meterFrame) meterFrame = requestAnimationFrame(tickAmbienceMeter);
+}
+function tickAmbienceMeter() {
+  meterFrame = 0;
+  if (!ambienceSettings.on) { renderAmbienceMeter(); return; }
+  ambienceMeter.hidden = false;
+  // Belt and braces: in a live session the player must be on the current
+  // persona. Every switch path goes through applyPersona() or Settings > Save,
+  // both of which tell it; if one ever does not, correct it here and say so.
+  const current = currentPersonaId() ?? "";
+  if (client && LIVE_STATES.has(currentState) && ambience.persona() !== current) {
+    console.warn(`[ambience] player was on "${ambience.persona() || "nothing"}" while ${current} is current (state ${currentState}); correcting`);
+    ambience.setPersona(current);
+  }
+  if (!ambience.isPlaying()) {
+    paintMeterIdle();
+    // A bed that is still decoding (a few MB of mp3) is not "playing" yet: keep
+    // polling so the bars come up when it starts, instead of giving up.
+    if (ambience.expectsBed()) meterFrame = requestAnimationFrame(tickAmbienceMeter);
+    return;
+  }
+  ambienceMeter.classList.remove("idle");
   // Label by whose bed is actually playing, never by the current persona: the
   // two differ briefly during a crossfade, and must never differ otherwise.
   const bedOwner = ambience.bedPersona();
-  const wanted = bedOwner && PERSONAS[bedOwner] ? `${PERSONAS[bedOwner].name}'s ambience` : "ambience";
-  if (ambienceMeterLabel.textContent !== wanted) ambienceMeterLabel.textContent = wanted;
+  setMeterLabel(bedOwner && PERSONAS[bedOwner] ? `${PERSONAS[bedOwner].name}'s ambience` : "ambience");
   // The bars follow the player's state, which cannot read as silence while a
   // bed plays: full at rest, about a third while ducked under the voice. The
   // measured signal, normalised against its recent peak, only adds movement.
@@ -515,19 +542,44 @@ function tickAmbienceMeter() {
   meterFrame = requestAnimationFrame(tickAmbienceMeter);
 }
 if (DEBUG) /** @type {any} */ (window).__ambience = ambience; // s2s.debug=1: poke at it from the console
-function startAmbienceMeter() {
-  if (!meterFrame) meterFrame = requestAnimationFrame(tickAmbienceMeter);
-}
+function startAmbienceMeter() { renderAmbienceMeter(); }
+/** Session over: the meter stays, at rest. */
 function stopAmbienceMeter() {
   if (meterFrame) { cancelAnimationFrame(meterFrame); meterFrame = 0; }
-  ambienceMeter.hidden = true;
+  if (ambienceSettings.on) { ambienceMeter.hidden = false; paintMeterIdle(); } else ambienceMeter.hidden = true;
 }
+
+// Tapping the meter opens a small panel with the ambience switch and volume,
+// the same settings as under Settings > Tools, saved as you move the slider.
+const ambiencePop = /** @type {HTMLElement} */ ($("#ambience-pop"));
+const ambiencePopSwitch = /** @type {HTMLInputElement} */ ($("#ambience-pop-on"));
+const ambiencePopVolume = /** @type {HTMLInputElement} */ ($("#ambience-pop-volume"));
+const ambiencePopValue = /** @type {HTMLElement} */ ($("#ambience-pop-value"));
+function closeAmbiencePop() {
+  if (ambiencePop.hidden) return;
+  ambiencePop.hidden = true;
+  ambienceMeter.setAttribute("aria-expanded", "false");
+}
+function openAmbiencePop() {
+  syncAmbienceUi();
+  ambiencePop.hidden = false;
+  ambienceMeter.setAttribute("aria-expanded", "true");
+  ambiencePopVolume.focus({ preventScroll: true });
+}
+ambienceMeter.addEventListener("click", () => { if (ambiencePop.hidden) openAmbiencePop(); else closeAmbiencePop(); });
+document.addEventListener("pointerdown", (e) => {
+  if (ambiencePop.hidden) return;
+  const t = /** @type {Node} */ (e.target);
+  if (!ambiencePop.contains(t) && !ambienceMeter.contains(t)) closeAmbiencePop();
+});
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !ambiencePop.hidden) { closeAmbiencePop(); ambienceMeter.focus(); } });
 async function loadSfxManifest() {
   try {
     const res = await fetch("api/sfx");
     if (res.ok) ambience.setManifest(await res.json());
   } catch { /* no ambience */ }
   syncAmbienceUi();
+  renderAmbienceMeter();
 }
 
 /** @param {ReturnType<typeof loadSettings>} s */
@@ -715,28 +767,39 @@ const ambienceVolume = /** @type {HTMLInputElement} */ ($("#ambience-volume"));
 const ambienceHint = /** @type {HTMLElement} */ ($("#ambience-hint"));
 const ambienceVolumeValue = /** @type {HTMLElement} */ ($("#ambience-volume-value"));
 function syncAmbienceUi() {
+  const pct = Math.round(ambienceSettings.volume * 100);
   ambienceSwitch.checked = ambienceSettings.on;
-  ambienceVolume.value = String(Math.round(ambienceSettings.volume * 100));
-  ambienceVolumeValue.textContent = `${Math.round(ambienceSettings.volume * 100)}%`;
+  ambienceVolume.value = String(pct);
+  ambienceVolumeValue.textContent = `${pct}%`;
+  ambiencePopSwitch.checked = ambienceSettings.on;
+  ambiencePopVolume.value = String(pct);
+  ambiencePopValue.textContent = `${pct}%`;
   const personas = Object.keys(PERSONAS).filter((id) => ambience.soundsFor(id).length || ambience.hasAnything());
   ambienceHint.textContent = ambience.hasAnything()
     ? `Background sound and cued effects for: ${Object.keys(PERSONAS).filter((id) => ambience.soundsFor(id).length).map((id) => PERSONAS[id].name).join(", ") || "none yet"}.`
     : "No sound files on this server yet (see demo/sfx/README.md).";
   void personas;
 }
-ambienceSwitch.addEventListener("change", () => {
-  ambienceSettings = { ...ambienceSettings, on: ambienceSwitch.checked };
+/** @param {boolean} on */
+function setAmbienceOn(on) {
+  ambienceSettings = { ...ambienceSettings, on };
   localStorage.setItem(STORAGE_KEYS.ambience, JSON.stringify(ambienceSettings));
-  ambience.setEnabled(ambienceSettings.on);
-  if (ambienceSettings.on) window.setTimeout(startAmbienceMeter, 300); else stopAmbienceMeter();
+  ambience.setEnabled(on);
+  syncAmbienceUi();
+  renderAmbienceMeter();
   pushToolsToSession();
-});
-ambienceVolume.addEventListener("input", () => {
-  ambienceSettings = { ...ambienceSettings, volume: Number(ambienceVolume.value) / 100 };
+}
+/** @param {number} pct 0..100 */
+function setAmbienceVolume(pct) {
+  ambienceSettings = { ...ambienceSettings, volume: Math.max(0, Math.min(100, pct)) / 100 };
   localStorage.setItem(STORAGE_KEYS.ambience, JSON.stringify(ambienceSettings));
   ambience.setVolume(ambienceSettings.volume);
-  ambienceVolumeValue.textContent = `${ambienceVolume.value}%`;
-});
+  syncAmbienceUi();
+}
+ambienceSwitch.addEventListener("change", () => setAmbienceOn(ambienceSwitch.checked));
+ambiencePopSwitch.addEventListener("change", () => setAmbienceOn(ambiencePopSwitch.checked));
+ambienceVolume.addEventListener("input", () => setAmbienceVolume(Number(ambienceVolume.value)));
+ambiencePopVolume.addEventListener("input", () => setAmbienceVolume(Number(ambiencePopVolume.value)));
 
 /** @type {AppState} */
 let currentState = "idle";

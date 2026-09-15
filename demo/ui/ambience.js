@@ -27,6 +27,8 @@ export class Ambience {
     this._ducked = false;
     this._duckTimer = 0;
     this._persona = "";
+    /** Bumped by every setPersona so a load that finishes after a later change starts nothing. */
+    this._gen = 0;
     /** @type {AnalyserNode | null} */
     this._analyser = null;
     this._levelBuf = new Uint8Array(1024);
@@ -37,6 +39,9 @@ export class Ambience {
 
   /** The persona whose bed is playing, or "" when none is. */
   bedPersona() { return this._bed?.persona ?? ""; }
+
+  /** The persona this player was last told about ("" before start / after stop). */
+  persona() { return this._persona; }
 
   /** Whether the bed is currently ducked under the assistant's voice. */
   isDucked() { return this._ducked; }
@@ -94,11 +99,15 @@ export class Ambience {
     if (!this._enabled || !this._ctx || !this._master) return;
     const url = this._manifest[persona]?.bed;
     this._stopBed();
+    const gen = ++this._gen;
     if (!url) return;
     const ctx = this._ctx;
     const master = this._master;
     void this._load(url).then((buffer) => {
-      if (!buffer || this._persona !== persona || !this._enabled || this._ctx !== ctx) return;
+      // Only the newest request may start a bed: two loads of the same bed in
+      // flight (e.g. a forced re-select while decoding) used to both start,
+      // and the first one looped on with no handle to stop it.
+      if (!buffer || gen !== this._gen || !this._enabled || this._ctx !== ctx) return;
       const gain = ctx.createGain();
       gain.gain.setValueAtTime(0.0001, ctx.currentTime);
       gain.connect(this._analyser ?? master); // the analyser feeds the master (wired in _ensureContext)
@@ -180,6 +189,7 @@ export class Ambience {
   _restLevel() { return BED_GAIN * (this._ducked ? DUCK_GAIN : 1); }
 
   _stopBed() {
+    this._gen++; // a pending load must not start a bed after this
     if (this._bed) { this._bed.stop(); this._bed = null; }
     this._ducked = false;
     if (this._duckTimer) { window.clearTimeout(this._duckTimer); this._duckTimer = 0; }

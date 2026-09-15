@@ -148,7 +148,7 @@ _Update at the end of a session that changed something._
   model / Warming up the voice; 25 s fail-safe), and assistant bubbles now
   stay while speaker output is audible (client emits `output-level`; chat
   view bumps the bubble's expiry, fades 3 s after the last word). Assets are
-  cache-busted with `?v=audio-24k-v57` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
+  cache-busted with `?v=audio-24k-v59` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
   editing demo JS/CSS or browsers keep the old files.
 - 2026-09-14 (tools): the LLM handler now parses the model's native
   `<tool_call><function=…><parameter=…>` XML blocks as well as the prompted
@@ -611,7 +611,23 @@ _Update at the end of a session that changed something._
   the persona tools like a voice hand-off does, and the meter names whose
   bed is actually playing (`Ambience.bedPersona()`), so the label can never
   disagree with the sound. Every persona change must go through either
-  `applyPersona()` or that Save branch.
+  `applyPersona()` or that Save branch. Michael then said the switch had
+  been by voice, and by reading, every voice path does reach the player, so
+  the true trigger is still unknown; the meter now checks each frame that
+  the player is on the current persona while a session is live, corrects
+  it and logs `[ambience] player was on ...` (look for that line in the
+  console if it recurs). A unit harness with a fake AudioContext
+  (`demo/tests/ambience.test.mjs`, pytest-wrapped) found a real leak on the
+  way: a forced re-select of the same persona while its bed was still
+  decoding (the ambience switch, or Save) started the bed twice and the first
+  copy looped on with no handle to stop it; loads now carry a generation
+  and only the newest may start a bed.
+- 2026-09-15 (meter as a control): the meter is visible whenever ambience
+  is on, reading "ambience" with flat bars when nothing plays (tap to start,
+  a persona without a bed) and "<Persona>'s ambience" with live bars while
+  a bed plays. Tapping it opens a small panel (switch + 0-100 volume slider,
+  saved as it moves, mirrored with the Settings > Tools controls; outside
+  click or Escape closes it). Hidden under 600 px like before.
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache

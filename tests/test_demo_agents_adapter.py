@@ -159,9 +159,9 @@ const good = await setupAudio({
   kind: "capture-config",
   inputRate: 48000,
   outputRate: 24000,
-  version: "audio-24k-v57",
+  version: "audio-24k-v59",
 });
-if (good.modules.length !== 2 || good.modules.some((url) => !url.endsWith("?v=audio-24k-v57"))) {
+if (good.modules.length !== 2 || good.modules.some((url) => !url.endsWith("?v=audio-24k-v59"))) {
   throw new Error(`audio worklets were not versioned: ${JSON.stringify(good.modules)}`);
 }
 const capture = good.nodes.find((node) => node.name === "mic-capture");
@@ -412,6 +412,20 @@ def test_markdown_renderer():
         pytest.skip("node is not installed")
     subprocess.run(
         [node, "--test", "tests/markdown.test.mjs"],
+        cwd=REPO_ROOT / "demo",
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_ambience_player():
+    """The persona ambience player against a fake audio context (demo/tests/ambience.test.mjs)."""
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    subprocess.run(
+        [node, "--test", "tests/ambience.test.mjs"],
         cwd=REPO_ROOT / "demo",
         check=True,
         capture_output=True,
