@@ -278,6 +278,21 @@ _Update at the end of a session that changed something._
   it is not a serving option. The OpenAI-compatible handler still has no
   `<think>` filter; if a provider leaks think text into content, fix the
   reasoning flag rather than the handler.
+- 2026-09-14 (barge-in starved STT): with the fast cloud LLM a whole long
+  reply reaches Breeze at once and is coalesced into one synthesis job.
+  `_stream` read the *live* cancel generation at the start of each sentence,
+  so after an interruption only the sentence in flight stopped; the rest of
+  the job (up to 49 s of audio, discarded downstream) kept the MLX lock for
+  30 s, Parakeet's final transcription lost its 5 s wait, and the user's
+  words during that time never became a turn. That is also why a persona
+  "persisted" with a cancelled recipe: the request was still open in the
+  history and no "stop" ever arrived. Fix: `_generate` takes the generation
+  stamped on the TTSInput, judges every sentence against it and drops the
+  remaining sentences when it goes stale. Probe (cancel mid-reply, then ask
+  a one-word question): follow-up first audio 30 s -> ~1 s. The local 27B
+  never showed this because it produced sentences slower than Breeze spoke
+  them. Note the OpenAI client also logged one 20 s "Retrying request" to
+  Ollama in that session; cloud hiccups exist and are not this bug.
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache

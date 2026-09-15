@@ -149,7 +149,7 @@ def test_process_streams_blocks_and_logs_first_audio_latency(monkeypatch, tmp_pa
     handler, _fake = _make_handler(monkeypatch, tmp_path)
     handler.cancel_scope = None
     handler.speculative_turns = None
-    handler._generate = lambda text: iter([np.zeros(512, dtype=np.int16), np.zeros(512, dtype=np.int16)])
+    handler._generate = lambda text, **kw: iter([np.zeros(512, dtype=np.int16), np.zeros(512, dtype=np.int16)])
     monkeypatch.setattr(breeze_module.console, "print", lambda *args, **kwargs: None)
 
     with caplog.at_level(logging.INFO, logger="speech_to_speech.TTS.breeze_tts_handler"):
@@ -166,7 +166,7 @@ def test_process_swallows_generation_errors(monkeypatch, tmp_path):
     handler.cancel_scope = None
     handler.speculative_turns = None
 
-    def _boom(text):
+    def _boom(text, **kw):
         raise RuntimeError("boom")
         yield  # pragma: no cover
 
@@ -450,3 +450,41 @@ def test_stamped_voice_wins_over_live_session_voice(monkeypatch, tmp_path):
     # the session already moved on to another voice, but this utterance was stamped with the old one
     handler._apply_session_voice_override(live, None, voice=None)
     assert handler.ref_audio == str(d / "villain.wav")
+
+
+def test_barge_in_stops_the_whole_job_not_just_the_sentence(monkeypatch, tmp_path, caplog):
+    from speech_to_speech.pipeline.cancel_scope import CancelScope
+
+    handler, fake = _make_handler(monkeypatch, tmp_path)
+    handler.cancel_scope = CancelScope()
+
+    def generate(**kwargs):
+        fake.calls.append(kwargs)
+        yield SimpleNamespace(audio=np.full(2400, 0.1, dtype=np.float32), sample_rate=24000)
+        if kwargs["text"].startswith("First"):
+            handler.cancel_scope.cancel()  # the user starts talking mid-sentence
+        yield SimpleNamespace(audio=np.full(2400, -0.1, dtype=np.float32), sample_rate=24000)
+
+    fake.generate = generate
+    calls_before = len(fake.calls)
+    with caplog.at_level(logging.INFO, logger=breeze_module.__name__):
+        blocks = list(handler._generate("First sentence is interrupted. Second is never started. Nor the third."))
+
+    assert [c["text"] for c in fake.calls[calls_before:]] == ["First sentence is interrupted."]
+    assert blocks  # the part synthesized before the interruption was still streamed
+    assert "dropping 2 remaining sentence(s)" in caplog.text
+
+
+def test_generate_uses_the_generation_stamped_on_the_input(monkeypatch, tmp_path):
+    from speech_to_speech.pipeline.cancel_scope import CancelScope
+
+    handler, fake = _make_handler(monkeypatch, tmp_path)
+    handler.cancel_scope = CancelScope()
+    stamped = handler.cancel_scope.generation
+    handler.cancel_scope.cancel()  # the reply this text belongs to was cancelled before synthesis began
+    calls_before = len(fake.calls)
+
+    assert list(handler._generate("Stale text. More stale text.", cancel_generation=stamped)) == []
+    assert len(fake.calls) == calls_before
+    # Without a stamp the job is judged against the live generation (warm-up, direct calls).
+    assert list(handler._generate("Fresh text."))

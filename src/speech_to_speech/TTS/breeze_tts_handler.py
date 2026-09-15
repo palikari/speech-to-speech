@@ -414,12 +414,36 @@ class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
         parts = [p.strip() for p in SENTENCE_SPLIT.split(text or "") if p and p.strip()]
         return parts or [(text or "").strip()]
 
-    def _generate(self, text: str) -> Iterator[np.ndarray]:
+    def _job_generation(self, cancel_generation: int | None) -> int | None:
+        """The cancel generation a synthesis job belongs to.
+
+        Prefer the generation stamped on the pipeline input; fall back to the
+        scope's current one (warm-up, direct calls). Captured once per job so
+        every sentence is compared against the same value: reading the live
+        generation per sentence made sentences started *after* a barge-in look
+        fresh, and the rest of a long reply was synthesized (and discarded)
+        while holding the MLX lock, starving STT of the user's next words.
+        """
+        if cancel_generation is not None:
+            return cancel_generation
+        return self.cancel_scope.generation if self.cancel_scope else None
+
+    def _is_stale(self, cancel_gen: int | None) -> bool:
+        return cancel_gen is not None and self.cancel_scope is not None and self.cancel_scope.is_stale(cancel_gen)
+
+    def _generate(self, text: str, cancel_generation: int | None = None) -> Iterator[np.ndarray]:
+        cancel_gen = self._job_generation(cancel_generation)
         with MLXLockContext(handler_name="BreezeTTS", timeout=10.0) as acquired:
             if not acquired:
                 raise TimeoutError("Timed out waiting for MLX lock")
             label = "clone+direction" if self.direction else "clone"
-            for sentence in self._split_sentences(text):
+            sentences = self._split_sentences(text)
+            for i, sentence in enumerate(sentences):
+                if self._is_stale(cancel_gen):
+                    logger.info(
+                        "TTS job cancelled (interruption): dropping %d remaining sentence(s)", len(sentences) - i
+                    )
+                    return
                 kwargs = self._generation_kwargs(sentence)
                 if logger.isEnabledFor(logging.DEBUG):
                     import threading
@@ -431,7 +455,7 @@ class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
                         sentence,
                         shown,
                     )
-                yield from self._stream(self.model.generate(**kwargs), label=label)
+                yield from self._stream(self.model.generate(**kwargs), label=label, cancel_gen=cancel_gen)
 
     @staticmethod
     def _to_numpy(audio: Any) -> np.ndarray | None:
@@ -513,9 +537,9 @@ class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
         state["run"], state["miss"], state["ref"] = run, miss, ref
         return None
 
-    def _stream(self, gen: Any, label: str) -> Iterator[np.ndarray]:
+    def _stream(self, gen: Any, label: str, cancel_gen: int | None = None) -> Iterator[np.ndarray]:
         """Common streaming loop: log TTFA and RTF, yield int16 blocks at PIPELINE_SR."""
-        cancel_gen = self.cancel_scope.generation if self.cancel_scope else None
+        cancel_gen = self._job_generation(cancel_gen)
         start = perf_counter()
         total_samples = 0
         first_chunk = True
@@ -531,7 +555,7 @@ class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
         stopped_on_held = False
 
         for item in gen:
-            if cancel_gen is not None and self.cancel_scope is not None and self.cancel_scope.is_stale(cancel_gen):
+            if self._is_stale(cancel_gen):
                 logger.info("TTS generation cancelled (interruption)")
                 return
 
@@ -779,7 +803,7 @@ class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
 
         try:
             first_audio = True
-            for audio_chunk in self._generate(text):
+            for audio_chunk in self._generate(text, cancel_generation=tts_input.cancel_generation):
                 if first_audio:
                     self._log_first_audio_latency(tts_input)
                     first_audio = False
