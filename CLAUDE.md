@@ -148,7 +148,7 @@ _Update at the end of a session that changed something._
   model / Warming up the voice; 25 s fail-safe), and assistant bubbles now
   stay while speaker output is audible (client emits `output-level`; chat
   view bumps the bubble's expiry, fades 3 s after the last word). Assets are
-  cache-busted with `?v=audio-24k-v49` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
+  cache-busted with `?v=audio-24k-v50` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
   editing demo JS/CSS or browsers keep the old files.
 - 2026-09-14 (tools): the LLM handler now parses the model's native
   `<tool_call><function=…><parameter=…>` XML blocks as well as the prompted
@@ -586,6 +586,20 @@ _Update at the end of a session that changed something._
   try spoke an inline $...$ formula). Live: quadratic formula as display
   math plus a spoken description, a planets table, and small talk with no
   card. Tests: `demo/tests/markdown.test.mjs` (pytest-wrapped).
+- 2026-09-15 (item 2: persona ambience): clips live in `demo/sfx/<persona>/`
+  (gitignored except the README; licensed from Envato, not redistributable;
+  Michael's masters are in `~/Documents/Sound Effects`). `bed.mp3|wav` is
+  the loop, any other file a one-shot named by its stem. `/api/sfx` lists
+  them. `demo/ui/ambience.js`: its own AudioContext (started on the orb
+  tap), bed at 0.16 gain looped with a 1.6 s crossfade at the seam (mp3
+  padding never clicks), ducked to 35% while the assistant is audible
+  (output-level) and restored 1.2 s after, crossfaded on persona change,
+  one-shots at 0.7. Settings: "Persona ambience" switch + volume (this
+  browser). `play_sound` tool, offered only when the current persona has
+  sounds (enum = its names; tools re-pushed on persona change), with a
+  prompt rule: once per reply at most, only when it fits, never announced.
+  Esmerelda today: bed = Halloween night ambience (2 min), one-shots spell
+  cast (10 s), cauldron bubbles (trimmed to 8 s), cat purring (trimmed to 6 s).
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache

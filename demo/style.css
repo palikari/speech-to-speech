@@ -2993,3 +2993,7 @@ body.cam-on .footer {
 .md .katex { font-size: 1.1em; }
 .md pre.md-math { font-family: var(--font-mono); margin: 6px 0; }
 .md a { color: var(--accent-2); }
+
+/* ── Ambience settings ──────────────────────────────────────────────────── */
+#ambience-fields .tool-row { padding-left: 0; padding-right: 0; }
+#ambience-volume { width: 100%; }

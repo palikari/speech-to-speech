@@ -409,6 +409,40 @@ async def search(req: SearchRequest):
     return JSONResponse({"query": query, "answer": answer, "results": results, "provider": "serper"})
 
 
+SFX_DIR = os.path.join(HERE, "sfx")
+SFX_EXTS = (".mp3", ".wav", ".ogg", ".m4a")
+
+
+@app.get("/api/sfx")
+def sfx_manifest():
+    """Ambience files per persona: {persona: {bed: url | None, sounds: {name: url}}}.
+
+    Discovered from demo/sfx/<persona>/ at request time (the files are licensed
+    and gitignored; see demo/sfx/README.md). URLs are relative to the page.
+    """
+    out: dict[str, dict] = {}
+    if not os.path.isdir(SFX_DIR):
+        return out
+    for persona in sorted(os.listdir(SFX_DIR)):
+        folder = os.path.join(SFX_DIR, persona)
+        if not os.path.isdir(folder) or persona.startswith("."):
+            continue
+        bed = None
+        sounds: dict[str, str] = {}
+        for name in sorted(os.listdir(folder)):
+            stem, ext = os.path.splitext(name)
+            if ext.lower() not in SFX_EXTS or name.startswith("."):
+                continue
+            url = f"sfx/{persona}/{name}"
+            if stem.lower() == "bed":
+                bed = url
+            else:
+                sounds[stem.replace("-", " ").replace("_", " ").strip().lower()] = url
+        if bed or sounds:
+            out[persona] = {"bed": bed, "sounds": sounds}
+    return out
+
+
 @app.post("/api/restaurants")
 async def find_restaurants(req: restaurants.RestaurantsRequest):
     """Restaurants for the model's find_restaurants tool: Google Places candidates

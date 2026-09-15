@@ -563,3 +563,19 @@ def test_config_reports_search_provider_and_fetch(monkeypatch):
     monkeypatch.setattr(demo_server, "OLLAMA_KEY", "")
     cfg = demo_server.config()
     assert cfg["search"] is False and cfg["searchProvider"] == "" and cfg["fetch"] is False
+
+
+def test_sfx_manifest_lists_beds_and_one_shots(monkeypatch, tmp_path):
+    (tmp_path / "witch").mkdir()
+    for name in ("bed.mp3", "spell-cast.wav", "cat_purring.WAV", "notes.txt", ".DS_Store"):
+        (tmp_path / "witch" / name).write_bytes(b"x")
+    (tmp_path / "captain").mkdir()  # empty: not listed
+    monkeypatch.setattr(demo_server, "SFX_DIR", str(tmp_path))
+    assert demo_server.sfx_manifest() == {
+        "witch": {
+            "bed": "sfx/witch/bed.mp3",
+            "sounds": {"cat purring": "sfx/witch/cat_purring.WAV", "spell cast": "sfx/witch/spell-cast.wav"},
+        }
+    }
+    monkeypatch.setattr(demo_server, "SFX_DIR", str(tmp_path / "missing"))
+    assert demo_server.sfx_manifest() == {}

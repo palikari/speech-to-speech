@@ -12,7 +12,7 @@
     />
     <link rel="icon" type="image/svg+xml" href="favicon.svg?v=4" />
     <link rel="stylesheet" href="vendor/katex/katex.min.css" />
-    <link rel="stylesheet" href="style.css?v=audio-24k-v49" />
+    <link rel="stylesheet" href="style.css?v=audio-24k-v50" />
   </head>
   <!--
     `booting` disables transitions/animations until the first paint commits.
@@ -367,6 +367,24 @@
               </small>
             </div>
 
+            <div class="field-group" id="ambience-fields">
+              <div class="tool-row" id="ambience-row">
+                <div class="tool-info">
+                  <span class="tool-name">Persona ambience</span>
+                  <span class="tool-desc">A quiet background for each persona, plus sound effects they can cue.</span>
+                </div>
+                <label class="switch">
+                  <input id="ambience-on" type="checkbox" />
+                  <span class="switch-track" aria-hidden="true"></span>
+                </label>
+              </div>
+              <label class="field">
+                <span>Ambience volume</span>
+                <input id="ambience-volume" type="range" min="0" max="100" step="5" />
+              </label>
+              <small id="ambience-hint" class="tool-hint"></small>
+            </div>
+
             <label class="field">
               <span>Microphone</span>
               <select id="audio-input">
@@ -515,6 +533,6 @@
 
     <script src="vendor/openai-realtime-agents.umd.js"></script>
     <script defer src="vendor/katex/katex.min.js"></script>
-    <script type="module" src="main.js?v=audio-24k-v49"></script>
+    <script type="module" src="main.js?v=audio-24k-v50"></script>
   </body>
 </html>

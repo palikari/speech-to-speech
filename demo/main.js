@@ -17,10 +17,11 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v49";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v50";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v49";
-import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v49";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v50";
+import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v50";
+import { Ambience } from "./ui/ambience.js?v=audio-24k-v50";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -66,7 +67,8 @@ const PERSONA_HANDOFF =
   + " listen normally again, call set_listening with that mode and confirm in a few words. When"
   + " something is better seen than heard, a formula, a table, code, a list of steps, a number or"
   + " address to copy, call show_on_screen with Markdown (math between $ signs) and then say a"
-  + " short plain version aloud; never speak markup."
+  + " short plain version aloud; never speak markup. If a play_sound tool is offered, cue one of"
+  + " its sounds only when it fits the moment, at most once per reply, without announcing it."
   + " When the user asks for a poem, song, story, list or explanation, that request overrides"
   + " the short-reply rule: give the whole thing in one reply, every line of it, without a"
   + " preamble and without waiting to be asked for more. Never promise something for later."
@@ -154,6 +156,7 @@ const STORAGE_KEYS = {
   personaMode: "s2s.ws.personaMode", // "preset" | "custom"
   wake: "s2s.wake", // "1" when the assistant only answers when called by name
   profile: "s2s.profile", // JSON: who the user is, in their own words (this browser only)
+  ambience: "s2s.ambience", // JSON {on, volume}: persona background sound
   tools: "s2s.ws.tools",
   searchKey: "s2s.ws.searchKey",
   noiseGate: "s2s.ws.noiseGate",
@@ -270,6 +273,20 @@ const TOOL_DEFS = {
         name: { type: "string", description: "Who is being called." },
       },
       required: ["number"],
+    },
+  },
+  play_sound: {
+    type: "function",
+    name: "play_sound",
+    description:
+      "Play one of your persona's sound effects on the user's speakers, once, when it fits the " +
+      "moment: a spell being cast, the cat, the cauldron. At most one per reply, only when it " +
+      "adds to the scene, always with a name from the list, and never say that you played it. " +
+      "For ordinary replies (facts, arithmetic, small talk) do not call this at all.",
+    parameters: {
+      type: "object",
+      properties: { name: { type: "string", enum: [] } },
+      required: ["name"],
     },
   },
   show_on_screen: {
@@ -444,6 +461,26 @@ function profilePayload() {
   return { s2s_user };
 }
 let profile = loadProfile();
+
+// ── Persona ambience (background bed + cued one-shots) ───────────────────────
+const ambience = new Ambience();
+/** @returns {{ on: boolean, volume: number }} */
+function loadAmbienceSettings() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(STORAGE_KEYS.ambience) || "{}");
+    return { on: raw.on !== false, volume: typeof raw.volume === "number" ? Math.max(0, Math.min(1, raw.volume)) : 0.6 };
+  } catch { return { on: true, volume: 0.6 }; }
+}
+let ambienceSettings = loadAmbienceSettings();
+ambience.setEnabled(ambienceSettings.on);
+ambience.setVolume(ambienceSettings.volume);
+async function loadSfxManifest() {
+  try {
+    const res = await fetch("api/sfx");
+    if (res.ok) ambience.setManifest(await res.json());
+  } catch { /* no ambience */ }
+  syncAmbienceUi();
+}
 
 /** @param {ReturnType<typeof loadSettings>} s */
 function saveSettings(s) {
@@ -625,6 +662,29 @@ const profileInputs = {
   notes: /** @type {HTMLTextAreaElement} */ ($("#profile-notes")),
 };
 const profileNicknameOk = /** @type {HTMLInputElement} */ ($("#profile-nickname-ok"));
+const ambienceSwitch = /** @type {HTMLInputElement} */ ($("#ambience-on"));
+const ambienceVolume = /** @type {HTMLInputElement} */ ($("#ambience-volume"));
+const ambienceHint = /** @type {HTMLElement} */ ($("#ambience-hint"));
+function syncAmbienceUi() {
+  ambienceSwitch.checked = ambienceSettings.on;
+  ambienceVolume.value = String(Math.round(ambienceSettings.volume * 100));
+  const personas = Object.keys(PERSONAS).filter((id) => ambience.soundsFor(id).length || ambience.hasAnything());
+  ambienceHint.textContent = ambience.hasAnything()
+    ? `Background sound and cued effects for: ${Object.keys(PERSONAS).filter((id) => ambience.soundsFor(id).length).map((id) => PERSONAS[id].name).join(", ") || "none yet"}.`
+    : "No sound files on this server yet (see demo/sfx/README.md).";
+  void personas;
+}
+ambienceSwitch.addEventListener("change", () => {
+  ambienceSettings = { ...ambienceSettings, on: ambienceSwitch.checked };
+  localStorage.setItem(STORAGE_KEYS.ambience, JSON.stringify(ambienceSettings));
+  ambience.setEnabled(ambienceSettings.on);
+  pushToolsToSession();
+});
+ambienceVolume.addEventListener("input", () => {
+  ambienceSettings = { ...ambienceSettings, volume: Number(ambienceVolume.value) / 100 };
+  localStorage.setItem(STORAGE_KEYS.ambience, JSON.stringify(ambienceSettings));
+  ambience.setVolume(ambienceSettings.volume);
+});
 
 /** @type {AppState} */
 let currentState = "idle";
@@ -769,6 +829,8 @@ function applyPersona(id, reason) {
   chat.setAssistantName(persona.name);
   if (client && LIVE_STATES.has(currentState)) {
     lastSessionUpdate = client.updateSession({ voice: persona.voice, instructions: persona.instructions });
+    ambience.setPersona(id);
+    pushToolsToSession(); // play_sound's sound list is per persona
   }
   renderWakeToggle();
   sendWakeConfig();
@@ -928,6 +990,14 @@ function activeToolDefs() {
   defs.push(TOOL_DEFS.switch_persona);
   // Deterministic, keyless, always on: the model must not count days or do sums itself.
   defs.push(LOCAL_TOOL_DEFS.date_math, LOCAL_TOOL_DEFS.calculate, TOOL_DEFS.set_listening, TOOL_DEFS.show_on_screen);
+  const sounds = ambienceSettings.on ? ambience.soundsFor(currentPersonaId() ?? "") : [];
+  if (sounds.length) {
+    defs.push({
+      ...TOOL_DEFS.play_sound,
+      description: `${TOOL_DEFS.play_sound.description} Available: ${sounds.join(", ")}.`,
+      parameters: { type: "object", properties: { name: { type: "string", enum: sounds } }, required: ["name"] },
+    });
+  }
   if (toolsEnabled.web_search && searchAvailable()) {
     defs.push(TOOL_DEFS.web_search);
     if (serverFetch) defs.push(TOOL_DEFS.web_fetch);
@@ -1538,6 +1608,10 @@ async function runTool(name, argsJson, callId) {
       result = { output: det.text, cards: det.found ? [det] : [] };
     } else if (name === "place_call") {
       result.output = placeCall(args);
+    } else if (name === "play_sound") {
+      const sound = typeof args.name === "string" ? args.name : "";
+      const played = await ambience.play(sound);
+      result.output = played ? `Played ${sound}. Carry on without mentioning it.` : `No sound named ${JSON.stringify(sound)} for this persona.`;
     } else if (name === "show_on_screen") {
       const markdown = typeof args.markdown === "string" ? args.markdown.trim() : "";
       const title = typeof args.title === "string" ? args.title.trim() : "";
@@ -1888,6 +1962,7 @@ async function fetchConfig() {
     if (res.ok) {
       const json = await res.json();
       renderBuildStamp(json.build);
+      void loadSfxManifest();
       serverSearchKey = !!json.search;
       serverFetch = !!json.fetch;
       serverRestaurants = !!json.restaurants;
@@ -2439,7 +2514,7 @@ async function doStart(audioContext = null) {
     tools: activeToolDefs(),
     audioOutputId: settings.audioOutputId || "",
     executeTool: async ({ name, arguments: args, callId }) => {
-      if (name !== "switch_persona") chat.onToolCall(name); // the switch announces itself
+      if (name !== "switch_persona" && name !== "play_sound") chat.onToolCall(name); // the switch announces itself; a sound is heard
       const result = await runTool(name, args, callId);
       if (client === c) chat.onToolResult(name, args, result.output, result.image, result.cards);
       return result;
@@ -2540,6 +2615,7 @@ async function doStart(audioContext = null) {
   });
   c.addEventListener("output-level", (e) => {
     const { audible } = /** @type {CustomEvent<{ rms: number; audible: boolean }>} */ (e).detail;
+    ambience.setSpeaking(audible);
     if (!audible) return;
     lastOutputAudibleAt = performance.now();
     if (warmingUp) endWarmup("first-audio");
@@ -2637,6 +2713,7 @@ async function doStart(audioContext = null) {
 
   try {
     await c.connect();
+    ambience.start(currentPersonaId() ?? ""); // the orb tap was the user gesture the audio needs
   } catch (err) {
     // The grant can be refused (402 → limit) or the dial can fail. In LB mode
     // the AudioContext hasn't been adopted by the client yet (the session POST
@@ -2835,6 +2912,7 @@ function onClientStatus(status) {
 
 async function teardown() {
   endWarmup("abort");
+  ambience.stop();
   stopHeartbeat();
   stopJoinCountdown();
   endTrackedSession();
