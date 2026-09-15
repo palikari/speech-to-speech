@@ -520,9 +520,7 @@ class TestClientEventDispatch:
                 time.sleep(0.1)
 
                 assert cancel_scope.generation == generation + 1
-                assert (
-                    service.text_prompt_queue.qsize() == 1
-                )  # the real turn's own request, and none from the resume path
+                assert service.text_prompt_queue.empty()
                 assert state.response_pending is False
                 assert state.pending_response_keys == set()
 
@@ -759,9 +757,10 @@ class TestSendLoop:
                 assert ws.receive_json()["type"] == "conversation.item.input_audio_transcription.completed"
                 time.sleep(0.15)
                 assert state.resume_after_empty_turn is False
-                assert (
-                    service.text_prompt_queue.empty()
-                )  # the real turn's own request comes from the STT path, not from here
+                # No response.created was sent by the resume path: the next event on the wire
+                # is the reply to a session.update we send now, not a response.created.
+                ws.send_json({"type": "session.update", "session": {"type": "realtime", "instructions": "x"}})
+                assert ws.receive_json()["type"] == "session.updated"
 
     def test_speech_started_does_not_cancel_pending_when_internal_non_interrupt(self, setup):
         app, service, _, _, text_output_queue, _, _, _, cancel_scope = setup
