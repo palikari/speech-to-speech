@@ -35,6 +35,9 @@ export class Ambience {
   /** Whether a bed is playing right now. */
   isPlaying() { return !!this._bed; }
 
+  /** Whether the bed is currently ducked under the assistant's voice. */
+  isDucked() { return this._ducked; }
+
   /** The bed's current loudness, 0..1 (post-duck, pre-master), for a meter. */
   level() {
     if (!this._analyser || !this._bed) return 0;

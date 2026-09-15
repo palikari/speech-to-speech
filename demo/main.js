@@ -17,11 +17,11 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v53";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v54";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v53";
-import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v53";
-import { Ambience } from "./ui/ambience.js?v=audio-24k-v53";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v54";
+import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v54";
+import { Ambience } from "./ui/ambience.js?v=audio-24k-v54";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -486,13 +486,14 @@ function tickAmbienceMeter() {
   const playing = ambience.isPlaying() && ambienceSettings.on;
   if (!playing) { ambienceMeter.hidden = true; meterPeak = 0; return; }
   ambienceMeter.hidden = false;
-  // Normalise against the bed's own recent peak: a quiet bed at a low volume
-  // still reads as "full" at rest, and ducking (a third of the level) shows as
-  // the bars dropping. The peak decays slowly so a change of bed re-adapts.
+  // The bars follow the player's state, which cannot read as silence while a
+  // bed plays: full at rest, about a third while ducked under the voice. The
+  // measured signal, normalised against its recent peak, only adds movement.
+  const base = ambience.isDucked() ? 0.35 : 1;
   const raw = ambience.level();
   meterPeak = Math.max(raw, meterPeak * 0.9995, 1e-4);
-  const level = Math.min(1, Math.sqrt(raw / meterPeak));
-  meterSmoothed += (level - meterSmoothed) * 0.2;
+  const motion = raw > 0 ? 0.8 + 0.2 * Math.min(1, raw / meterPeak) : 1;
+  meterSmoothed += (base * motion - meterSmoothed) * 0.2;
   const t = performance.now() / 1000;
   ambienceBars.forEach((bar, i) => {
     const wobble = 0.75 + 0.25 * Math.sin(t * (2.1 + i * 0.7) + i);
@@ -500,6 +501,7 @@ function tickAmbienceMeter() {
   });
   meterFrame = requestAnimationFrame(tickAmbienceMeter);
 }
+if (DEBUG) /** @type {any} */ (window).__ambience = ambience; // s2s.debug=1: poke at it from the console
 function startAmbienceMeter() {
   const current = currentPersonaId();
   ambienceMeterLabel.textContent = current ? `${PERSONAS[current].name}'s ambience` : "ambience";
