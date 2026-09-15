@@ -616,6 +616,7 @@ class ResponseHandler(RealtimeBaseHandler):
         item_id = str(pending["item_id"])
         output_index = cast(int, pending["output_index"])
         text = self._assistant_text(pending, wants_audio)
+        done_voice: dict[str, str] = {"voice": str(pending["voice"])} if pending.get("voice") else {}
         if wants_audio:
             if text:
                 events.append(
@@ -627,6 +628,7 @@ class ResponseHandler(RealtimeBaseHandler):
                         output_index=output_index,
                         response_id=resp_id,
                         transcript=text,
+                        **done_voice,
                     )
                 )
             part = DoneContentPart(type="audio", audio="", transcript=text)
@@ -1015,6 +1017,10 @@ class ResponseHandler(RealtimeBaseHandler):
                     st.pending_assistant_output_index = output_idx
                     delta = (" " if parts else "") + text
                     parts.append(text)
+                    if event.voice:
+                        pending["voice"] = event.voice
+                    # `voice` is an s2s extra: the voice this response is spoken in,
+                    # so a client can label the transcript by speaker.
                     events.append(
                         ResponseAudioTranscriptDeltaEvent(
                             type="response.output_audio_transcript.delta",
@@ -1024,6 +1030,7 @@ class ResponseHandler(RealtimeBaseHandler):
                             item_id=item_id,
                             output_index=output_idx,
                             response_id=resp_id,
+                            **({"voice": event.voice} if event.voice else {}),
                         )
                     )
                 else:

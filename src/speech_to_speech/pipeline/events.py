@@ -108,6 +108,7 @@ class AssistantOutputEvent(PipelineEvent):
     type: Literal["assistant_text"] = "assistant_text"
     parts: list[AssistantOutputPart] = Field(default_factory=list)
     text: str = ""
+    voice: Optional[str] = None  # session voice the response was stamped with at generation start
     tools: list[ResponseFunctionToolCall] = Field(default_factory=list)
     turn_id: str | None = None
     turn_revision: int | None = None

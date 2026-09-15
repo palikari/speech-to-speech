@@ -159,16 +159,12 @@ export class ChatView {
   /** @param {string} name */
   setAssistantName(name) {
     this._assistantName = (name || "").trim() || "Assistant";
-    // A thinking placeholder created before a persona switch would keep the
-    // old name when the reply fills it in; relabel it now.
-    const live = this._thinkingBubble;
-    if (live?.isConnected && !live.classList.contains("out")) this._relabel(live);
   }
 
-  /** @param {HTMLElement} el */
-  _relabel(el) {
+  /** @param {HTMLElement} el @param {string} [name] */
+  _relabel(el, name) {
     const role = el.querySelector(".bubble-role, .hist-role");
-    if (role) role.textContent = this._assistantName;
+    if (role) role.textContent = name || this._assistantName;
   }
 
   _buildMessageEl({ container, prefix, role, text, partial = false }) {
@@ -566,9 +562,13 @@ export class ChatView {
       // missing id gets a unique key so two id-less replies never collide.
       const rid = d.responseId || `_a${++this._anonSeq}`;
       const entry = this._asstByResp.get(rid);
+      const speaker = d.speaker || this._assistantName;
       if (!entry) {
-        const bubble = this._claimThinkingBubble(d.text) ?? this._spawnBubble("assistant", d.text);
-        this._asstByResp.set(rid, { bubble, hist: this._appendHistMsg("assistant", d.text, false) });
+        const bubble = this._claimThinkingBubble(d.text, speaker) ?? this._spawnBubble("assistant", d.text);
+        this._relabel(bubble, speaker);
+        const hist = this._appendHistMsg("assistant", d.text, false);
+        this._relabel(hist, speaker);
+        this._asstByResp.set(rid, { bubble, hist });
         this._latestAsstBubble = bubble;
         this._bumpDismiss(bubble);
       } else {
@@ -688,13 +688,13 @@ export class ChatView {
    * Turn the live thinking bubble into the real reply bubble.
    * @param {string} text @returns {HTMLElement | null}
    */
-  _claimThinkingBubble(text) {
+  _claimThinkingBubble(text, speaker) {
     const el = this._thinkingBubble;
     this._thinkingBubble = null;
     this._thinkingSawTool = false;
     if (!el?.isConnected || el.classList.contains("out")) return null;
     el.classList.remove("thinking");
-    this._relabel(el);
+    this._relabel(el, speaker);
     this._updateBubbleText(el, text);
     return el;
   }

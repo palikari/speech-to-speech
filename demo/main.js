@@ -17,9 +17,9 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v20";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v21";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v20";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v21";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -1789,6 +1789,12 @@ async function doStart(audioContext = null) {
   c.addEventListener("transcript", (e) => {
     const d = /** @type {CustomEvent<{ role: "user" | "assistant"; text: string; partial: boolean; itemId?: string; responseId?: string }>} */ (e).detail;
     if (warmingUp && d.role === "assistant") setWarmupStep("Warming up the voice…");
+    if (d.role === "assistant") {
+      // Label by who actually spoke it: the server stamps each response with
+      // its voice, which can differ from the current persona right after a switch.
+      const spoken = d.voice && Object.values(PERSONAS).find((p) => p.voice === d.voice);
+      d.speaker = spoken ? spoken.name : undefined;
+    }
     chat.onTranscript(d);
     if (d.role === "user" && !d.partial) {
       // Deterministic hand-off. The reply already in flight belongs to the

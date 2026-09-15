@@ -195,6 +195,7 @@ class LMOutputProcessor(BaseHandler[LLMOut, TTSIn | PipelineEvent]):
                     )
             event = AssistantOutputEvent(
                 parts=[part],
+                voice=lm_output.voice,
                 turn_id=lm_output.turn_id,
                 turn_revision=lm_output.turn_revision,
                 cancel_generation=lm_output.cancel_generation,

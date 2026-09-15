@@ -49,7 +49,7 @@ import { OrbVisualiser, VIS_FFT_SIZE } from "./ws/orb-visualizer.js";
 import { SentAudioRecorder } from "./ws/user-audio-recorder.js";
 
 export const AUDIO_SAMPLE_RATE = 24_000;
-export const AUDIO_WORKLET_VERSION = "audio-24k-v20";
+export const AUDIO_WORKLET_VERSION = "audio-24k-v21";
 const MIC_CHUNK_MS = 40;
 const CAPTURE_CONFIG_TIMEOUT_MS = 2_000;
 const SPEAKING_OPEN_DB = -50;
@@ -123,6 +123,8 @@ export class S2sRealtimeClient extends EventTarget {
     this._audibleResponses = new Set();
     this._asstTranscriptByResp = new Map();
     this._asstFullByResp = new Map();
+    /** responseId -> voice the server stamped the response with (s2s extra). */
+    this._asstVoiceByResp = new Map();
     // Input transcription deltas are append-only and may overlap across turns.
     // Keep each unresolved prefix until its authoritative completion arrives.
     this._userTranscriptByItem = new Map();
@@ -546,8 +548,10 @@ export class S2sRealtimeClient extends EventTarget {
         const delta = typeof event.delta === "string" ? event.delta : "";
         if (delta) {
           this._asstTranscriptByResp.set(responseId, (this._asstTranscriptByResp.get(responseId) || "") + delta);
+          if (typeof event.voice === "string" && event.voice) this._asstVoiceByResp.set(responseId, event.voice);
           this.dispatchEvent(new CustomEvent("transcript", { detail: {
             role: "assistant", text: this._asstDisplay(responseId), partial: true, responseId,
+            voice: this._asstVoiceByResp.get(responseId),
           } }));
         }
         break;
@@ -560,8 +564,10 @@ export class S2sRealtimeClient extends EventTarget {
         if (segment) {
           const previous = this._asstFullByResp.get(responseId) || "";
           this._asstFullByResp.set(responseId, previous ? `${previous} ${segment}` : segment);
+          if (typeof event.voice === "string" && event.voice) this._asstVoiceByResp.set(responseId, event.voice);
           this.dispatchEvent(new CustomEvent("transcript", { detail: {
             role: "assistant", text: this._asstFullByResp.get(responseId), partial: false, responseId,
+            voice: this._asstVoiceByResp.get(responseId),
           } }));
         }
         break;
@@ -582,6 +588,7 @@ export class S2sRealtimeClient extends EventTarget {
         this._audibleResponses.delete(responseId);
         this._asstTranscriptByResp.delete(responseId);
         this._asstFullByResp.delete(responseId);
+        this._asstVoiceByResp.delete(responseId);
         break;
       }
       case "error": {
