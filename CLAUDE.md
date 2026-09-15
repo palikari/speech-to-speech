@@ -676,7 +676,7 @@ _Update at the end of a session that changed something._
   debug hooks (`s2s.debug=1`: `__chat`, `__recentCards`, `__showCardAgain`).
 - 2026-09-15 (Karloff's ambience): `demo/sfx/villain/` from Michael's
   `~/Documents/Sound Effects/Mad Scientist` masters: bed = mad scientist's
-  lab (2 min mp3; the master sat at -51 dB mean, so +30 dB to land near
+  lab (2 min mp3; the master sat at -51 dB mean, so +31 dB to land near
   the witch bed's level), one-shots electricity sparks (8 s of a Jacob's
   ladder), potion bubbling (8 s), ray gun (the "Power Mad Glitch" master,
   named by Michael's ear), monster groan, electric hum (a sci-fi hum like
