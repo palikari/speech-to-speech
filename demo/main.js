@@ -17,10 +17,10 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v43";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v44";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v43";
-import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v43";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v44";
+import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v44";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -928,10 +928,15 @@ function setState(next) {
 
   const live = LIVE_STATES.has(next);
   orbWrap.classList.toggle("live", live);
-  micBtn.setAttribute("aria-hidden", live ? "false" : "true");
-  stopBtn.setAttribute("aria-hidden", live ? "false" : "true");
-  micBtn.tabIndex = live ? 0 : -1;
-  stopBtn.tabIndex = live ? 0 : -1;
+  for (const btn of [micBtn, stopBtn]) {
+    // The End button is usually focused when the session ends (the user just
+    // clicked it); hiding a focused element from assistive tech is an error.
+    // Drop focus first, and use `inert`, which also removes it from the tab order.
+    if (!live && document.activeElement === btn) btn.blur();
+    btn.inert = !live;
+    btn.setAttribute("aria-hidden", live ? "false" : "true");
+    btn.tabIndex = live ? 0 : -1;
+  }
 
   // Queue affordances: "Leave queue" whenever we're in line; "Join now" only once
   // it's our turn (a slot is held for us). Both live under #queue-actions.
