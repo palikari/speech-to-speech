@@ -17,10 +17,10 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v38";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v39";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v38";
-import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v38";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v39";
+import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v39";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -871,6 +871,8 @@ let client = null;
 /** @type {MediaStream | null} */
 let micStream = null;
 let micMuted = false;
+/** The mic is muted because the page started a phone call (see muteForCall). */
+let callMuted = false;
 
 /** Apply both the user's mute choice and the temporary replay guard. */
 function syncMicMuteState() {
@@ -938,7 +940,11 @@ function updateRestartAvailability() {
  * @param {string} text
  * @param {"" | "error" | "muted"} [kind]
  */
+const CALL_MUTE_CAPTION = "Mic muted for your call · tap the mic to unmute";
 function setCaption(text, kind = "") {
+  // While the mic is muted for a call, that fact outranks the state captions
+  // that every status change repaints; errors still show.
+  if (callMuted && kind !== "error") { text = CALL_MUTE_CAPTION; kind = "muted"; }
   const trimmed = text.trim();
   circleCaption.textContent = trimmed;
   circleCaption.className = `circle-caption${kind ? ` ${kind}` : ""}${trimmed ? "" : " empty"}`;
@@ -1574,10 +1580,15 @@ function findRecentPlace(name, area) {
   return hits[0] ?? null;
 }
 
-/** Open a URL in a new tab; false when the browser blocked the popup (no user gesture). @param {string} url */
+/** Open a URL in a new tab; false when the browser blocked the popup (no user gesture).
+ *  No "noopener" feature here: with it window.open returns null even when the tab
+ *  opened, which made every open look blocked. The opener is cleared by hand instead.
+ *  @param {string} url */
 function openExternal(url) {
-  const w = window.open(url, "_blank", "noopener");
-  return !!w;
+  const w = window.open(url, "_blank");
+  if (!w) return false;
+  try { w.opener = null; } catch { /* cross-origin: already detached */ }
+  return true;
 }
 
 /** @param {Record<string, unknown>} args @returns {Promise<{ text: string, url?: string, kind?: string, name?: string, opened?: boolean }>} */
@@ -1606,12 +1617,11 @@ async function openPlacePage(args) {
 }
 
 /** Mute the mic for a phone call the page just started; the user unmutes with the mic button. */
-let callMuted = false;
 function muteForCall() {
   if (!micStream || !client) return;
   callMuted = true;
   setMicMuted(true);
-  setCaption("Mic muted for your call · tap the mic to unmute", "muted");
+  setCaption(CALL_MUTE_CAPTION, "muted");
 }
 /** @param {boolean} muted */
 function setMicMuted(muted) {

@@ -148,7 +148,7 @@ _Update at the end of a session that changed something._
   model / Warming up the voice; 25 s fail-safe), and assistant bubbles now
   stay while speaker output is audible (client emits `output-level`; chat
   view bumps the bubble's expiry, fades 3 s after the last word). Assets are
-  cache-busted with `?v=audio-24k-v38` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
+  cache-busted with `?v=audio-24k-v39` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
   editing demo JS/CSS or browsers keep the old files.
 - 2026-09-14 (tools): the LLM handler now parses the model's native
   `<tool_call><function=…><parameter=…>` XML blocks as well as the prompted
@@ -467,7 +467,11 @@ _Update at the end of a session that changed something._
   search results and details now carry `reviews_url`
   (search.google.com/local/reviews?placeid=) and `directions_url` (Maps
   URLs API with destination_place_id); every card has Reviews / Directions
-  / Website / Call action links. The page keeps the last 40 places seen
+  / Website / Call action links. Two fixes from Michael's test: window.open
+  with the "noopener" feature returns null even when the tab opened, so
+  every open was reported as blocked (opener is now cleared by hand and
+  null means blocked); the call-mute caption is enforced inside
+  setCaption while `callMuted`, since every status change repaints it. The page keeps the last 40 places seen
   (`recentPlaces`) so open_page needs no server call when the place was in
   a recent result; the website comes from a details fetch when missing.
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
