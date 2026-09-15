@@ -293,6 +293,17 @@ _Update at the end of a session that changed something._
   never showed this because it produced sentences slower than Breeze spoke
   them. Note the OpenAI client also logged one 20 s "Retrying request" to
   Ollama in that session; cloud hiccups exist and are not this bug.
+- 2026-09-14 (interrupted replies stay in history): a cancelled reply used
+  to be removed from the conversation entirely (upstream design, so an
+  unseen tool call cannot poison the next turn). The model then saw
+  "recipe?" followed by "Stop." with no trace it had started answering, and
+  answered the still-open request again, a new recipe every time. Now
+  `ResponseHandler._record_interrupted_reply` keeps the transcript delivered
+  so far as the assistant's turn with the marker `[interrupted by the user]`
+  (mirrors OpenAI Realtime, where the truncated item stays); tool calls of a
+  cancelled reply are still discarded, failed/incomplete replies are still
+  rolled back whole. Probe (Karloff recipe, cancel, "Stop."): 3/3
+  acknowledged and dropped the recipe, versus 0/3 before.
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache

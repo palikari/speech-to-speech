@@ -37,7 +37,7 @@ from openai.types.realtime.response_content_part_added_event import Part as Adde
 from openai.types.realtime.response_content_part_done_event import Part as DoneContentPart
 
 from speech_to_speech.api.openai_realtime.handlers.base import RealtimeBaseHandler
-from speech_to_speech.LLM.chat import ChatItemError, add_supported_item
+from speech_to_speech.LLM.chat import ChatItemError, add_supported_item, make_assistant_message
 from speech_to_speech.pipeline.events import (
     AssistantOutputEvent,
     AssistantResponseDoneEvent,
@@ -54,9 +54,14 @@ from speech_to_speech.pipeline.transcript_logging import log_exception
 from speech_to_speech.utils.utils import _generate_id, is_out_of_band, response_wants_audio
 
 if TYPE_CHECKING:
-    from speech_to_speech.api.openai_realtime.service import ServerEvent, _ResponseStatus, _StatusReason
+    from speech_to_speech.api.openai_realtime.service import ConnState, ServerEvent, _ResponseStatus, _StatusReason
 
 logger = logging.getLogger(__name__)
+
+
+# Appended to the delivered transcript of a cancelled reply when it is kept in
+# the conversation history (never spoken, never sent to the client).
+INTERRUPTED_MARKER = "[interrupted by the user]"
 
 
 class ResponseHandler(RealtimeBaseHandler):
@@ -527,6 +532,29 @@ class ResponseHandler(RealtimeBaseHandler):
             output_by_index[output_index] = call.model_copy(update={"object": "realtime.item", "status": call_status})
         return [output_by_index[index] for index in sorted(output_by_index)]
 
+    def _record_interrupted_reply(self, st: ConnState) -> None:
+        """Keep the delivered part of a cancelled reply in the history, marked as cut off.
+
+        Rolling the whole reply back (the default for cancelled/failed output)
+        leaves the model with no trace that it ever started answering, so a
+        following "stop" or "never mind" reads as a bare word against a still
+        open request and the model answers the request again. Mirroring the
+        OpenAI Realtime API, the transcript delivered so far stays as the
+        assistant's turn with a marker; tool calls are still discarded because
+        the client never saw them.
+        """
+        if is_out_of_band(st.current_response_params):
+            return
+        wants_audio = response_wants_audio(st.current_response_params)
+        spoken = [self._assistant_text(pending, wants_audio) for pending in st.pending_text_outputs]
+        text = " ".join(part.strip() for part in spoken if part.strip()).strip()
+        if not text:
+            return
+        try:
+            st.runtime_config.chat.add_item(make_assistant_message(f"{text} {INTERRUPTED_MARKER}"))
+        except ChatItemError as exc:
+            log_exception(logger, "Could not record the interrupted reply", exc, level=logging.INFO)
+
     @staticmethod
     def _assistant_text(pending: dict[str, object], wants_audio: bool) -> str:
         """Assemble transcript parts using the active output modality's semantics."""
@@ -918,6 +946,8 @@ class ResponseHandler(RealtimeBaseHandler):
                 # Remove incomplete response history before deferred client items
                 # are applied, so an unseen call cannot poison the next turn.
                 st.runtime_config.chat.rollback_provisional_generation(st.current_response_key)
+                if status == "cancelled":
+                    self._record_interrupted_reply(st)
             self._end_response(conn_id, status)
         # Apply any client items that arrived mid-generation now that in_response
         # is cleared and the generation's own write-back has landed. Done outside

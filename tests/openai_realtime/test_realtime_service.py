@@ -5250,3 +5250,45 @@ class TestChatToolCallTracking:
 
         chat.append_tool_output("call_z", self._fco("call_z"))
         assert chat._has_call_id_in_buffer("call_z")
+
+
+class TestInterruptedReplyHistory:
+    """A cancelled reply keeps what was delivered in the history, marked as interrupted."""
+
+    def test_cancelled_reply_keeps_delivered_transcript_with_marker(self, service, conn_id):
+        from speech_to_speech.api.openai_realtime.handlers.response import INTERRUPTED_MARKER
+        from speech_to_speech.LLM.chat import make_user_message
+
+        chat = service._state(conn_id).runtime_config.chat
+        chat.add_item(make_user_message("Do you have a recipe for chili?"))
+        service.dispatch_pipeline_event(conn_id, AssistantOutputEvent(text="But of course: brown a pound of beef."))
+        service.dispatch_pipeline_event(conn_id, AssistantOutputEvent(text="Then add the beans."))
+
+        service.finish_response(conn_id, status="cancelled", reason="turn_detected")
+
+        last = chat.buffer[-1]
+        assert isinstance(last, RealtimeConversationItemAssistantMessage)
+        assert last.content[0].text == f"But of course: brown a pound of beef. Then add the beans. {INTERRUPTED_MARKER}"
+        assert chat._provisional_generations == {}
+
+    def test_cancelled_reply_with_nothing_delivered_leaves_history_alone(self, service, conn_id):
+        from speech_to_speech.LLM.chat import make_user_message
+
+        chat = service._state(conn_id).runtime_config.chat
+        user = chat.add_item(make_user_message("Hello?"))
+        service.response._ensure_response(conn_id)
+
+        service.finish_response(conn_id, status="cancelled", reason="turn_detected")
+
+        assert chat.buffer == [user]
+
+    def test_failed_reply_is_still_rolled_back_entirely(self, service, conn_id):
+        from speech_to_speech.LLM.chat import make_user_message
+
+        chat = service._state(conn_id).runtime_config.chat
+        user = chat.add_item(make_user_message("Hello?"))
+        service.dispatch_pipeline_event(conn_id, AssistantOutputEvent(text="Half a sentence"))
+
+        service.finish_response(conn_id, status="failed")
+
+        assert chat.buffer == [user]
