@@ -572,7 +572,13 @@ _Update at the end of a session that changed something._
   mini; 9 server-side agent layer (personas, tools, hand-off choreography
   out of the page); 10 Dograh + Telnyx; 11 Sam places calls (disclosure
   line); 12 Teams bot via Azure Communication Services; 13 on-device wake
-  word. Deferred: local prompt cache; opening hours at a later time.
+  word. Deferred: local prompt cache; opening hours at a later time;
+  context cost control (added 2026-09-15: each turn resends the whole
+  history, ~7k input tokens by the end of a long session; the upstream
+  compactor in `LLM/compaction_prompt.py` is already wired into both LLM
+  handlers, so first check its threshold and how well GLM summarises, or
+  route compaction to a cheaper model; only if the Ollama meter ever
+  matters).
 - 2026-09-15 (item 3: tools tidy-up + show_on_screen): the Tools panel is
   grouped (Information / Senses / Places / Always on), the Serper key field
   shows only when the server has no search key, and the web-search text
