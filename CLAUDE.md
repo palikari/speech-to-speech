@@ -546,6 +546,17 @@ _Update at the end of a session that changed something._
   to the search provider; standby drops unaddressed speech), and
   `PRIVACY.md` documents both configurations with the fully local launch
   line. For paying clients: get the provider's DPA and subprocessor list.
+- 2026-09-15 (cough during a reply): Michael asked Esmerelda for the news
+  and coughed; the cough was speech to the VAD, cancelled the tool
+  follow-up, transcribed to nothing, so no new turn existed and nothing
+  re-asked for the reply: the search result sat unanswered and the page
+  showed "..." until its failsafe. Router fix: a VAD barge-in that cancels
+  a response sets `ConnState.resume_after_empty_turn`; when that turn's
+  TranscriptionCompletedEvent is empty (and nothing else is in flight) the
+  router re-creates the response as a client `response.create` would; a
+  non-empty transcript clears the flag (its own request drives the reply).
+  Explicit `response.cancel` from the client does not set the flag. Tests
+  in `tests/openai_realtime/test_websocket_router.py`.
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache

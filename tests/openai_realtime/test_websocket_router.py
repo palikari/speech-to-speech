@@ -32,6 +32,7 @@ from speech_to_speech.pipeline.events import (
     ResponseGenerationDoneEvent,
     SpeechStartedEvent,
     TokenUsageEvent,
+    TranscriptionCompletedEvent,
     TranscriptionFailedEvent,
 )
 from speech_to_speech.pipeline.messages import (
@@ -519,7 +520,9 @@ class TestClientEventDispatch:
                 time.sleep(0.1)
 
                 assert cancel_scope.generation == generation + 1
-                assert service.text_prompt_queue.empty()
+                assert (
+                    service.text_prompt_queue.qsize() == 1
+                )  # the real turn's own request, and none from the resume path
                 assert state.response_pending is False
                 assert state.pending_response_keys == set()
 
@@ -712,6 +715,53 @@ class TestSendLoop:
                 output_queue.put(AudioOutput(audio=AUDIO_RESPONSE_DONE, cancel_generation=stale_generation))
                 time.sleep(0.15)
                 assert not cancel_scope.discarding
+
+    def test_empty_interruption_resumes_the_cancelled_response(self, setup):
+        """A cough cancels the reply; when it transcribes to nothing, the reply is re-created."""
+        app, service, _, output_queue, text_output_queue, _, _, _, cancel_scope = setup
+        with TestClient(app) as client:
+            with client.websocket_connect("/v1/realtime") as ws:
+                ws.receive_json()  # session.created
+                conn_id = list(service._conns.keys())[0]
+                service.dispatch_pipeline_event(
+                    conn_id, AudioInputCompletedEvent(audio=np.zeros(1600, dtype=np.float32), audio_duration_s=0.1)
+                )
+                state = service._state(conn_id)
+                text_output_queue.put(SpeechStartedEvent())
+                assert ws.receive_json()["type"] == "input_audio_buffer.speech_started"
+                time.sleep(0.15)
+                assert state.response_pending is False and state.resume_after_empty_turn is True
+                assert service.text_prompt_queue.empty()
+
+                text_output_queue.put(TranscriptionCompletedEvent(transcript="", language_code="en"))
+                assert ws.receive_json()["type"] == "conversation.item.input_audio_transcription.completed"
+                assert ws.receive_json()["type"] == "response.created"
+                time.sleep(0.15)
+                assert state.resume_after_empty_turn is False
+                assert service.text_prompt_queue.qsize() == 1  # the resumed request is queued for the LLM
+
+    def test_real_interruption_does_not_resume(self, setup):
+        app, service, _, _, text_output_queue, _, _, _, _ = setup
+        with TestClient(app) as client:
+            with client.websocket_connect("/v1/realtime") as ws:
+                ws.receive_json()
+                conn_id = list(service._conns.keys())[0]
+                service.dispatch_pipeline_event(
+                    conn_id, AudioInputCompletedEvent(audio=np.zeros(1600, dtype=np.float32), audio_duration_s=0.1)
+                )
+                state = service._state(conn_id)
+                text_output_queue.put(SpeechStartedEvent())
+                ws.receive_json()
+                time.sleep(0.15)
+                text_output_queue.put(
+                    TranscriptionCompletedEvent(transcript="Wait, what about tomorrow?", language_code="en")
+                )
+                assert ws.receive_json()["type"] == "conversation.item.input_audio_transcription.completed"
+                time.sleep(0.15)
+                assert state.resume_after_empty_turn is False
+                assert (
+                    service.text_prompt_queue.empty()
+                )  # the real turn's own request comes from the STT path, not from here
 
     def test_speech_started_does_not_cancel_pending_when_internal_non_interrupt(self, setup):
         app, service, _, _, text_output_queue, _, _, _, cancel_scope = setup

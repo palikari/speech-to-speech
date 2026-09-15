@@ -877,6 +877,29 @@ def create_app(
                         if events:
                             await transport.send_events(events)
 
+                    if isinstance(text_msg, TranscriptionCompletedEvent) and session_id and transport is not None:
+                        st = unit.service._state(session_id)
+                        if text_msg.transcript.strip():
+                            st.resume_after_empty_turn = False  # a real turn drives its own response
+                        elif st.resume_after_empty_turn and not st.in_response and not st.response_pending:
+                            # The interruption was noise: give the cancelled response back.
+                            st.resume_after_empty_turn = False
+                            logger.info(
+                                "Pipeline %d: interruption produced no speech; resuming the cancelled response",
+                                unit.index,
+                            )
+                            result = unit.service.handle_response_create(
+                                session_id, ResponseCreateEvent(type="response.create")
+                            )
+                            if result:
+                                response_key = None
+                                if result.type != "error":
+                                    unit.cancel_scope.new_response()
+                                    response_key = st.current_response_key
+                                await transport.send_events([result])
+                                if result.type == "response.created":
+                                    unit.service.response.mark_response_created_sent(session_id, response_key)
+
                     if isinstance(text_msg, SpeechStartedEvent) and session_id:
                         active_cfg = unit.service._state(session_id).runtime_config
                         interrupt_enabled = text_msg.interrupt_response and (
@@ -893,6 +916,7 @@ def create_app(
                             if interrupt_enabled:
                                 unit.cancel_scope.cancel()
                                 unit.service.close_pending_responses(session_id)
+                                unit.service._state(session_id).resume_after_empty_turn = True
                                 _flush_queue(unit.text_prompt_queue, preserve=_keep_pipeline_control)
                                 _flush_queue(unit.output_queue, preserve=_keep_cancel_bookkeeping)
                                 _flush_queue(unit.text_output_queue, preserve=_keep_user_text_event)

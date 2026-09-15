@@ -191,6 +191,9 @@ class ConnState(BaseModel):
     runtime_config: RuntimeConfig = Field(default_factory=RuntimeConfig)
     in_response: bool = False
     response_pending: bool = False
+    # A barge-in cancelled a response; if the interrupting speech transcribes to
+    # nothing (a cough, a door), the cancelled response is re-created.
+    resume_after_empty_turn: bool = False
     pending_response_keys: set[str] = Field(default_factory=set)
     closed_response_keys: dict[str, None] = Field(default_factory=dict)
     audio_buffer_has_data: bool = False
