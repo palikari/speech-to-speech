@@ -92,8 +92,7 @@ export class Ambience {
       if (!buffer || this._persona !== persona || !this._enabled || this._ctx !== ctx) return;
       const gain = ctx.createGain();
       gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-      gain.connect(this._analyser ?? master);
-      if (this._analyser) this._analyser.connect(master);
+      gain.connect(this._analyser ?? master); // the analyser feeds the master (wired in _ensureContext)
       let stopped = false;
       /** @type {AudioBufferSourceNode[]} */
       const sources = [];
@@ -188,6 +187,7 @@ export class Ambience {
     this._analyser = this._ctx.createAnalyser();
     this._analyser.fftSize = 1024;
     this._analyser.smoothingTimeConstant = 0.6;
+    this._analyser.connect(this._master);
   }
 
   /** @param {string} url */
