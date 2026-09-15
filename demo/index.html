@@ -12,7 +12,7 @@
     />
     <link rel="icon" type="image/svg+xml" href="favicon.svg?v=4" />
     <link rel="stylesheet" href="vendor/katex/katex.min.css" />
-    <link rel="stylesheet" href="style.css?v=audio-24k-v50" />
+    <link rel="stylesheet" href="style.css?v=audio-24k-v51" />
   </head>
   <!--
     `booting` disables transitions/animations until the first paint commits.
@@ -379,8 +379,12 @@
                 </label>
               </div>
               <label class="field">
-                <span>Ambience volume</span>
-                <input id="ambience-volume" type="range" min="0" max="100" step="5" />
+                <span>Ambience volume · <b id="ambience-volume-value">60%</b></span>
+                <input id="ambience-volume" type="range" min="0" max="100" step="5" list="ambience-ticks" />
+                <datalist id="ambience-ticks">
+                  <option value="0"></option><option value="25"></option><option value="50"></option><option value="75"></option><option value="100"></option>
+                </datalist>
+                <div class="range-scale" aria-hidden="true"><span>0</span><span>25</span><span>50</span><span>75</span><span>100</span></div>
               </label>
               <small id="ambience-hint" class="tool-hint"></small>
             </div>
@@ -533,6 +537,6 @@
 
     <script src="vendor/openai-realtime-agents.umd.js"></script>
     <script defer src="vendor/katex/katex.min.js"></script>
-    <script type="module" src="main.js?v=audio-24k-v50"></script>
+    <script type="module" src="main.js?v=audio-24k-v51"></script>
   </body>
 </html>

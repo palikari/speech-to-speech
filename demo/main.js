@@ -17,11 +17,11 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v50";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v51";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v50";
-import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v50";
-import { Ambience } from "./ui/ambience.js?v=audio-24k-v50";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v51";
+import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v51";
+import { Ambience } from "./ui/ambience.js?v=audio-24k-v51";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -665,9 +665,11 @@ const profileNicknameOk = /** @type {HTMLInputElement} */ ($("#profile-nickname-
 const ambienceSwitch = /** @type {HTMLInputElement} */ ($("#ambience-on"));
 const ambienceVolume = /** @type {HTMLInputElement} */ ($("#ambience-volume"));
 const ambienceHint = /** @type {HTMLElement} */ ($("#ambience-hint"));
+const ambienceVolumeValue = /** @type {HTMLElement} */ ($("#ambience-volume-value"));
 function syncAmbienceUi() {
   ambienceSwitch.checked = ambienceSettings.on;
   ambienceVolume.value = String(Math.round(ambienceSettings.volume * 100));
+  ambienceVolumeValue.textContent = `${Math.round(ambienceSettings.volume * 100)}%`;
   const personas = Object.keys(PERSONAS).filter((id) => ambience.soundsFor(id).length || ambience.hasAnything());
   ambienceHint.textContent = ambience.hasAnything()
     ? `Background sound and cued effects for: ${Object.keys(PERSONAS).filter((id) => ambience.soundsFor(id).length).map((id) => PERSONAS[id].name).join(", ") || "none yet"}.`
@@ -684,6 +686,7 @@ ambienceVolume.addEventListener("input", () => {
   ambienceSettings = { ...ambienceSettings, volume: Number(ambienceVolume.value) / 100 };
   localStorage.setItem(STORAGE_KEYS.ambience, JSON.stringify(ambienceSettings));
   ambience.setVolume(ambienceSettings.volume);
+  ambienceVolumeValue.textContent = `${ambienceVolume.value}%`;
 });
 
 /** @type {AppState} */

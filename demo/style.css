@@ -2997,3 +2997,8 @@ body.cam-on .footer {
 /* ── Ambience settings ──────────────────────────────────────────────────── */
 #ambience-fields .tool-row { padding-left: 0; padding-right: 0; }
 #ambience-volume { width: 100%; }
+
+/* ── Range scale under sliders ──────────────────────────────────────────── */
+.range-scale { display: flex; justify-content: space-between; margin-top: 2px; padding: 0 2px; font-family: var(--font-mono); font-size: 10px; color: var(--text-faint); }
+.range-scale span { position: relative; }
+.range-scale span::before { content: ""; display: block; width: 1px; height: 4px; margin: 0 auto 2px; background: var(--border-strong); }
