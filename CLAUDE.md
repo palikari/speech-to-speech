@@ -135,7 +135,7 @@ _Update at the end of a session that changed something._
   model / Warming up the voice; 25 s fail-safe), and assistant bubbles now
   stay while speaker output is audible (client emits `output-level`; chat
   view bumps the bubble's expiry, fades 3 s after the last word). Assets are
-  cache-busted with `?v=audio-24k-v28` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
+  cache-busted with `?v=audio-24k-v29` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
   editing demo JS/CSS or browsers keep the old files.
 - 2026-09-14 (tools): the LLM handler now parses the model's native
   `<tool_call><function=…><parameter=…>` XML blocks as well as the prompted
@@ -326,6 +326,23 @@ _Update at the end of a session that changed something._
   the villain voice, captain greeting in the captain voice); the page state
   machine itself is not unit-tested and was checked by reading, so watch
   the console (`[persona] hold`, `[persona] pending`) on the first tries.
+- 2026-09-14 (hand-off follow-up, Michael's browser test): every hand-off
+  took the hold path (GLM called switch_persona silently 5/5 in the
+  browser). Two leftovers: the goodbye reply sometimes went on to greet as
+  the *next* persona in the old voice (Bob: "The witch returns, my dear"),
+  and the new persona's first reply was sometimes a second farewell in the
+  new voice, because the history it saw ended with a hand-off and a goodbye
+  and nothing said the switch had happened. Fixes in demo/main.js: the hold
+  result now says "only the goodbye, do not speak as or for X" (8/8 clean);
+  `switchAndReply` sends a user-role hand-off note item after the goodbye
+  (`client.sendUserNote`, not rendered; the page's initial greeting uses
+  the same mechanism) and requests the greeting with per-response
+  `instructions` (`client.requestResponse({instructions})`, persona prompt
+  plus a note). Measured directly with the exact post-goodbye history: the
+  instructions note alone 1-3/8 farewell-style greetings, plus the note item
+  0/8; pipeline 4/4. A system-role conversation item cannot carry the note:
+  `Chat._add_item_locked` treats it as a replacement session prompt and the
+  LLM handler re-applies the session instructions at each generation.
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache

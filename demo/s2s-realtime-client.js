@@ -49,7 +49,7 @@ import { OrbVisualiser, VIS_FFT_SIZE } from "./ws/orb-visualizer.js";
 import { SentAudioRecorder } from "./ws/user-audio-recorder.js";
 
 export const AUDIO_SAMPLE_RATE = 24_000;
-export const AUDIO_WORKLET_VERSION = "audio-24k-v28";
+export const AUDIO_WORKLET_VERSION = "audio-24k-v29";
 const MIC_CHUNK_MS = 40;
 const CAPTURE_CONFIG_TIMEOUT_MS = 2_000;
 const SPEAKING_OPEN_DB = -50;
@@ -656,10 +656,21 @@ export class S2sRealtimeClient extends EventTarget {
   }
 
   /** @param {{image?: string}} [options] */
+  /** Ask for a response. `instructions` replace the session prompt for that one
+   *  response only (the server keeps the session's prompt for later turns).
+   *  @param {{image?: string, instructions?: string}} [options] */
   requestResponse(options = {}) {
     if (options.image) this._session?.addImage(options.image, { triggerResponse: false });
     this._responseRequested = true;
-    this._transport?.requestResponse();
+    this._transport?.requestResponse(options.instructions ? { instructions: options.instructions } : undefined);
+  }
+
+  /** Add a text item to the conversation as the user, without asking for a
+   *  response (the page's hand-off note; not rendered as a bubble, the page
+   *  only shows user text that came from the server's transcription).
+   *  @param {string} text */
+  sendUserNote(text) {
+    this._session?.sendMessage(text, {}, { triggerResponse: false });
   }
 
   /** @param {string} dataUrl */

@@ -17,9 +17,9 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v28";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v29";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v28";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v29";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -625,11 +625,26 @@ let heldResponses = 0;
 /** The last session update sent; a response that must use it is requested after this settles. */
 let lastSessionUpdate = /** @type {Promise<void> | null} */ (null);
 
-/** Switch persona, then have the new persona answer once the session update has reached the server. */
+/** Switch persona, then have the new persona answer once the session update has reached the server.
+ *  The greeting carries a one-off note: without it the model, seeing only the
+ *  hand-off and the goodbye in the history, has answered with a second farewell
+ *  in the new voice. */
 function switchAndReply(c, id, reason) {
   if (id !== currentPersonaId()) applyPersona(id, reason);
+  const persona = PERSONAS[id];
+  // Two nudges, measured separately: the per-response note alone still left
+  // 1-3 of 8 greetings sounding like farewells; a note placed in the
+  // conversation after the goodbye brought that to 0 of 8. (A system-role
+  // item would not do: the server treats one as a replacement session prompt.)
+  const note = ` Hand-off complete: the previous persona has already said goodbye, and you are ${persona.name} now.`
+    + " Greet the user briefly in your own character, then help them. Do not say goodbye and do not call switch_persona.";
+  const handoffNote = "(Hand-off note, not spoken by the user: the previous persona has said its goodbye; that farewell was"
+    + ` theirs. You are ${persona.name} now, and the user is waiting for your greeting. Greet them briefly in your own`
+    + " character, then help them.)";
   void Promise.resolve(lastSessionUpdate).then(() => {
-    if (client === c && LIVE_STATES.has(currentState)) c.requestResponse();
+    if (client !== c || !LIVE_STATES.has(currentState)) return;
+    c.sendUserNote(handoffNote);
+    c.requestResponse({ instructions: persona.instructions + note });
   });
 }
 /** Hand-off the assistant promised in words but did not perform; applied when the reply ends. */
@@ -1193,7 +1208,7 @@ async function runTool(name, argsJson, callId) {
         heldPersona = id;
         heldResponses = 0;
         console.log(`[persona] hold → ${PERSONAS[id].name} · goodbye first`);
-        result.output = `Not switched yet. First say a one-line goodbye in your own voice, now, in this reply. The switch to ${PERSONAS[id].label} happens by itself when this reply ends; do not call switch_persona again.`;
+        result.output = `Not switched yet. First say a one-line goodbye in your own voice, now, in this reply. The switch to ${PERSONAS[id].label} happens by itself when this reply ends; do not call switch_persona again. Only the goodbye, nothing more: do not speak as or for ${PERSONAS[id].label} and do not greet on their behalf; they speak next, by themselves.`;
       } else if (id && applyPersona(id, "inferred")) {
         result.output = `Switched to ${PERSONAS[id].label}. From now on you are that persona: reply in character, in their voice, and greet the user briefly.`;
       } else {
