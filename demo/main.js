@@ -17,11 +17,11 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v51";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v52";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v51";
-import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v51";
-import { Ambience } from "./ui/ambience.js?v=audio-24k-v51";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v52";
+import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v52";
+import { Ambience } from "./ui/ambience.js?v=audio-24k-v52";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -468,12 +468,41 @@ const ambience = new Ambience();
 function loadAmbienceSettings() {
   try {
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEYS.ambience) || "{}");
-    return { on: raw.on !== false, volume: typeof raw.volume === "number" ? Math.max(0, Math.min(1, raw.volume)) : 0.6 };
-  } catch { return { on: true, volume: 0.6 }; }
+    return { on: raw.on !== false, volume: typeof raw.volume === "number" ? Math.max(0, Math.min(1, raw.volume)) : 0.15 };
+  } catch { return { on: true, volume: 0.15 }; }
 }
 let ambienceSettings = loadAmbienceSettings();
 ambience.setEnabled(ambienceSettings.on);
 ambience.setVolume(ambienceSettings.volume);
+// Bottom-left meter: five bars scaled by the bed's live level, so ducking is visible.
+const ambienceMeter = /** @type {HTMLElement} */ ($("#ambience-meter"));
+const ambienceMeterLabel = /** @type {HTMLElement} */ ($("#ambience-meter-label"));
+const ambienceBars = /** @type {HTMLElement[]} */ ([...ambienceMeter.querySelectorAll("i")]);
+let meterFrame = 0;
+let meterSmoothed = 0;
+function tickAmbienceMeter() {
+  meterFrame = 0;
+  const playing = ambience.isPlaying() && ambienceSettings.on;
+  if (!playing) { ambienceMeter.hidden = true; return; }
+  ambienceMeter.hidden = false;
+  const level = Math.min(1, ambience.level() * 6); // beds sit around 0.05-0.15 rms; scale up
+  meterSmoothed += (level - meterSmoothed) * 0.25;
+  const t = performance.now() / 1000;
+  ambienceBars.forEach((bar, i) => {
+    const wobble = 0.75 + 0.25 * Math.sin(t * (2.1 + i * 0.7) + i);
+    bar.style.transform = `scaleY(${Math.max(0.12, meterSmoothed * wobble)})`;
+  });
+  meterFrame = requestAnimationFrame(tickAmbienceMeter);
+}
+function startAmbienceMeter() {
+  const current = currentPersonaId();
+  ambienceMeterLabel.textContent = current ? `${PERSONAS[current].name}'s ambience` : "ambience";
+  if (!meterFrame) meterFrame = requestAnimationFrame(tickAmbienceMeter);
+}
+function stopAmbienceMeter() {
+  if (meterFrame) { cancelAnimationFrame(meterFrame); meterFrame = 0; }
+  ambienceMeter.hidden = true;
+}
 async function loadSfxManifest() {
   try {
     const res = await fetch("api/sfx");
@@ -680,6 +709,7 @@ ambienceSwitch.addEventListener("change", () => {
   ambienceSettings = { ...ambienceSettings, on: ambienceSwitch.checked };
   localStorage.setItem(STORAGE_KEYS.ambience, JSON.stringify(ambienceSettings));
   ambience.setEnabled(ambienceSettings.on);
+  if (ambienceSettings.on) window.setTimeout(startAmbienceMeter, 300); else stopAmbienceMeter();
   pushToolsToSession();
 });
 ambienceVolume.addEventListener("input", () => {
@@ -833,6 +863,7 @@ function applyPersona(id, reason) {
   if (client && LIVE_STATES.has(currentState)) {
     lastSessionUpdate = client.updateSession({ voice: persona.voice, instructions: persona.instructions });
     ambience.setPersona(id);
+    window.setTimeout(startAmbienceMeter, 300);
     pushToolsToSession(); // play_sound's sound list is per persona
   }
   renderWakeToggle();
@@ -2717,6 +2748,7 @@ async function doStart(audioContext = null) {
   try {
     await c.connect();
     ambience.start(currentPersonaId() ?? ""); // the orb tap was the user gesture the audio needs
+    window.setTimeout(startAmbienceMeter, 300);
   } catch (err) {
     // The grant can be refused (402 → limit) or the dial can fail. In LB mode
     // the AudioContext hasn't been adopted by the client yet (the session POST
@@ -2916,6 +2948,7 @@ function onClientStatus(status) {
 async function teardown() {
   endWarmup("abort");
   ambience.stop();
+  stopAmbienceMeter();
   stopHeartbeat();
   stopJoinCountdown();
   endTrackedSession();

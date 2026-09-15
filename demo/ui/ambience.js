@@ -27,6 +27,22 @@ export class Ambience {
     this._ducked = false;
     this._duckTimer = 0;
     this._persona = "";
+    /** @type {AnalyserNode | null} */
+    this._analyser = null;
+    this._levelBuf = new Uint8Array(1024);
+  }
+
+  /** Whether a bed is playing right now. */
+  isPlaying() { return !!this._bed; }
+
+  /** The bed's current loudness, 0..1 (post-duck, pre-master), for a meter. */
+  level() {
+    if (!this._analyser || !this._bed) return 0;
+    const buf = this._levelBuf;
+    this._analyser.getByteTimeDomainData(buf);
+    let sum = 0;
+    for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
+    return Math.sqrt(sum / buf.length);
   }
 
   /** @param {Record<string, PersonaSfx>} manifest */
@@ -59,7 +75,7 @@ export class Ambience {
   stop() {
     this._stopBed();
     this._persona = "";
-    if (this._ctx) { void this._ctx.close().catch(() => {}); this._ctx = null; this._master = null; }
+    if (this._ctx) { void this._ctx.close().catch(() => {}); this._ctx = null; this._master = null; this._analyser = null; }
   }
 
   /** Crossfade to another persona's bed (or silence). @param {string} persona @param {boolean} [force] */
@@ -76,7 +92,8 @@ export class Ambience {
       if (!buffer || this._persona !== persona || !this._enabled || this._ctx !== ctx) return;
       const gain = ctx.createGain();
       gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-      gain.connect(master);
+      gain.connect(this._analyser ?? master);
+      if (this._analyser) this._analyser.connect(master);
       let stopped = false;
       /** @type {AudioBufferSourceNode[]} */
       const sources = [];
@@ -168,6 +185,9 @@ export class Ambience {
     this._master = this._ctx.createGain();
     this._master.gain.value = this._volume;
     this._master.connect(this._ctx.destination);
+    this._analyser = this._ctx.createAnalyser();
+    this._analyser.fftSize = 1024;
+    this._analyser.smoothingTimeConstant = 0.6;
   }
 
   /** @param {string} url */
