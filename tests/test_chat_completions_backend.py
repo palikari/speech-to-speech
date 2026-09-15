@@ -999,3 +999,44 @@ if __name__ == "__main__":
             print(f"FAIL  {t.__name__}: {type(e).__name__}: {e}")
     print(f"\n{len(tests) - failed}/{len(tests)} passed")
     raise SystemExit(1 if failed else 0)
+
+
+# ── Persona voice stamp and wake gate (shared with the mlx-lm handler) ───────
+
+
+def _session_with(extra):
+    return RealtimeSessionCreateRequest.model_validate({"type": "realtime", "instructions": "Be brief.", **extra})
+
+
+def test_chunks_carry_the_voice_captured_at_response_start():
+    handler = _make_handler()
+    handler.client.chat.completions.next_result = _FakeStream(
+        [_chunk(content="Hello there. "), _chunk(content="And more.")]
+    )
+    chat = Chat(10)
+    chat.add_item(make_user_message("Hi"))
+    rc = RuntimeConfig(chat=chat, session=_session_with({"audio": {"output": {"voice": "witch"}}}))
+    req = GenerateResponseRequest(runtime_config=rc, turn_id="t", turn_revision=0)
+    chunks = [out for out in handler.process(req) if isinstance(out, LLMResponseChunk)]
+    assert chunks and all(c.voice == "witch" for c in chunks)
+
+
+def test_wake_gate_declines_unaddressed_turns_and_opens_a_window_after_a_reply():
+    handler = _make_handler()
+    session = _session_with({"s2s_wake": {"enabled": True, "words": ["bob"], "others": {"witch": ["esmerelda"]}}})
+    chat = Chat(10)
+    rc = RuntimeConfig(chat=chat, session=session)
+
+    def ask(text):
+        handler.client.chat.completions.next_result = _FakeStream([_chunk(content="Sure.")])
+        chat.add_item(make_user_message(text))
+        req = GenerateResponseRequest(runtime_config=rc, turn_id="t", turn_revision=0)
+        outs = list(handler.process(req))
+        spoken = "".join(o.text for o in outs if isinstance(o, LLMResponseChunk))
+        assert isinstance(outs[-1], EndOfResponse) and outs[-1].error is None
+        return spoken
+
+    assert ask("What's the weather?") == ""  # not addressed: silent, but the response still ends cleanly
+    assert ask("Hey Bob, what's the weather?") == "Sure."
+    assert ask("And tomorrow?") == "Sure."  # inside the awake window
+    assert ask("Esmerelda, are you there?") == ""  # another persona's wake word: client switches, not us

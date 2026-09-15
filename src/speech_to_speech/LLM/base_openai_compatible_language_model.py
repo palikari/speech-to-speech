@@ -45,8 +45,10 @@ from speech_to_speech.LLM.utils import (
     remove_unspeechable,
     resolve_auto_language,
     sent_tokenize_preserving_markdown_code,
+    voice_snapshot,
 )
 from speech_to_speech.LLM.voice_prompt import build_voice_system_prompt
+from speech_to_speech.LLM.wake_gate import extend_awake_window, gate_turn
 from speech_to_speech.pipeline.cancel_scope import CancelScope
 from speech_to_speech.pipeline.handler_types import LLMIn, LLMOut
 from speech_to_speech.pipeline.messages import (
@@ -125,6 +127,9 @@ class _Turn(BaseModel):
     # End of the conversation when this turn started; keeps its output ahead of
     # user messages appended while the model was still running.
     history_anchor_id: str | None = None
+    # Voice fixed at generation start so a persona switch mid-response does not
+    # re-voice sentences already produced (see LLM.utils.voice_snapshot).
+    voice: Optional[str] = None
 
 
 class _GenState(BaseModel):
@@ -534,6 +539,7 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
             cancel_generation=turn.gen,
             response_key=turn.response_key,
             prefetch_transaction=turn.prefetch_transaction,
+            voice=turn.voice,
         )
 
     def _record_tool_call(self, state: _GenState, turn: _Turn, item: ResponseFunctionToolCall) -> Iterator[LLMOut]:
@@ -834,6 +840,7 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
                     cancel_generation=turn.gen,
                     response_key=turn.response_key,
                     prefetch_transaction=turn.prefetch_transaction,
+                    voice=turn.voice,
                 )
 
             can_commit = (
@@ -919,6 +926,19 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
                     pass
             rollback_transaction()
 
+    def _wake_gate_declines(self, request: LLMIn) -> bool:
+        """True when wake mode is on and this user turn is not addressed to the assistant."""
+        if is_out_of_band(request.response):
+            return False
+        gate = gate_turn(request.runtime_config)
+        if gate is None:
+            return False
+        if gate.answer:
+            logger.info("Wake gate: answering (%s)", gate.reason)
+            return False
+        logger.info("Wake gate: not answering (%s)", gate.reason)
+        return True
+
     def _process_audio(self, request: LLMIn) -> Iterator[LLMOut]:
         """Process an audio-input turn through the selected backend protocol."""
         assert request.audio is not None
@@ -930,6 +950,15 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
         gen = self.cancel_scope.generation if self.cancel_scope else None
         if not self._turn_is_latest(turn_id, turn_revision):
             logger.info("Skipping stale LLM request for turn=%s rev=%s", turn_id, turn_revision)
+            yield EndOfResponse(
+                turn_id=turn_id,
+                turn_revision=turn_revision,
+                cancel_generation=gen,
+                response_key=request.response_key,
+            )
+            return
+
+        if self._wake_gate_declines(request):
             yield EndOfResponse(
                 turn_id=turn_id,
                 turn_revision=turn_revision,
@@ -1029,6 +1058,7 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
             response_key=request.response_key,
             prefetch_transaction=request.prefetch_transaction,
             history_anchor_id=history_anchor_id,
+            voice=voice_snapshot(runtime_config, response),
         )
         yield from self._generate(
             active_chat,
@@ -1041,6 +1071,8 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
             transactional_user_message_id=transactional_user_message_id,
             history_commit_fn=history_commit_fn,
         )
+        if not is_out_of_band(response):
+            extend_awake_window(runtime_config)
 
     def process(self, request: LLMIn) -> Iterator[LLMOut]:
         """Process a language model request and yield LLMResponseChunks."""
@@ -1056,6 +1088,15 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
         gen = self.cancel_scope.generation if self.cancel_scope else None
         if not self._turn_is_latest(turn_id, turn_revision):
             logger.info("Skipping stale LLM request for turn=%s rev=%s", turn_id, turn_revision)
+            yield EndOfResponse(
+                turn_id=turn_id,
+                turn_revision=turn_revision,
+                cancel_generation=gen,
+                response_key=request.response_key,
+            )
+            return
+
+        if self._wake_gate_declines(request):
             yield EndOfResponse(
                 turn_id=turn_id,
                 turn_revision=turn_revision,
@@ -1124,8 +1165,11 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
             response_key=request.response_key,
             prefetch_transaction=request.prefetch_transaction,
             history_anchor_id=history_anchor_id,
+            voice=voice_snapshot(runtime_config, response),
         )
         yield from self._generate(active_chat, original_chat, turn, optional_kwargs)
+        if not is_out_of_band(response):
+            extend_awake_window(runtime_config)
 
     @property
     def timing_log_level(self) -> int:

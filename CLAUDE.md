@@ -53,6 +53,24 @@ Server (port 8765) with the chosen defaults:
 sound the same). Delete it and change `--breeze_tts_instruct` to design a new
 one; it is regenerated on the next start with seed 0.
 
+Cloud LLM through Ollama (same STT/TTS; only the LLM stage changes). Needs the
+Ollama app running and signed in (`ollama signin`; Michael has Ollama Pro on
+the Studio). The key is a dummy for the local server, which forwards `:cloud`
+models to ollama.com under the signed-in account:
+
+```bash
+.venv/bin/speech-to-speech serve --stt parakeet-tdt --llm_backend chat-completions \
+  --responses_api_base_url http://127.0.0.1:11434/v1 --responses_api_api_key ollama \
+  --model_name glm-5.3-flash:cloud --responses_api_reasoning_effort minimal \
+  --tts breeze --breeze_tts_voice_path voices/assistant.wav --enable_live_transcription
+```
+
+`--responses_api_reasoning_effort` matters per model (see Current state,
+2026-09-14 Ollama). To talk to ollama.com directly instead of the local
+server, use `--responses_api_base_url https://ollama.com/v1` and pass a real
+key from an environment variable (`--responses_api_api_key "$OLLAMA_API_KEY"`),
+never on the command line or in chat.
+
 Browser demo (port 7860), in a second terminal:
 
 ```bash
@@ -240,6 +258,26 @@ _Update at the end of a session that changed something._
   `demo/tests/persona-phrases.test.mjs` (wrapped by pytest); it only knows
   names, roles and two nicknames (madman, sorceress); everything else is the
   model's job.
+- 2026-09-14 (Ollama cloud LLM): the `chat-completions` backend now works
+  for the demo: `base_openai_compatible_language_model.py` gained the same
+  wake gate and per-response voice stamp as the mlx-lm handler (shared
+  helpers `LLM/wake_gate.py` `gate_turn`/`extend_awake_window` and
+  `LLM/utils.py` `voice_snapshot`). Probed through Ollama 0.34 local server
+  (`http://127.0.0.1:11434/v1`): `glm-5.3-flash:cloud` gives ~0.5-0.9 s to
+  first content versus 2-3 s for the local 27B, nickname inference 7/7
+  (local 27B: 6/7), web_search and switch_persona calls correct, no think
+  leaks. Reasoning flag per model on Ollama's OpenAI endpoint:
+  `reasoning_effort=none` makes GLM think *inline in content* with only a
+  bare `</think>` close (the pipeline speaks it), so GLM needs `minimal`
+  (or `low`); `qwen3.5:397b-cloud` needs `none` (10-15 s of thinking
+  otherwise); `gpt-oss:120b-cloud` always reasons a little but puts it in
+  the `reasoning` field and is fastest (~0.3 s). `chat_template_kwargs` and
+  `think:false` are ignored by Ollama. Retired/absent there: deepseek-v3.2,
+  minimax-m2.5, kimi-k2.7, gemini. LM Studio's Secure Cloud subscription is
+  app-only (its local server, port 1234, exposes only downloaded models), so
+  it is not a serving option. The OpenAI-compatible handler still has no
+  `<think>` filter; if a provider leaks think text into content, fix the
+  reasoning flag rather than the handler.
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache

@@ -2,7 +2,7 @@ import base64
 import io
 import re
 from collections.abc import Callable
-from typing import Optional
+from typing import Any, Optional
 
 import requests  # type: ignore[import-untyped]
 from PIL import Image
@@ -294,3 +294,18 @@ def image_url_to_pil(image_url: str) -> Image.Image:
     resp = requests.get(image_url, timeout=10)
     resp.raise_for_status()
     return Image.open(io.BytesIO(resp.content))
+
+
+def voice_snapshot(runtime_config: Any, response: Any) -> Optional[str]:
+    """The voice a response should be spoken in, fixed at generation start.
+
+    A persona switch mid-response (session.update from the client) must not
+    re-voice sentences the model has already produced, so every chunk carries
+    the voice captured here rather than reading the live session.
+    """
+    if response is not None and response.audio and response.audio.output and response.audio.output.voice:
+        return str(response.audio.output.voice)
+    audio = runtime_config.session.audio
+    output = audio.output if audio is not None else None
+    voice = output.voice if output is not None else None
+    return str(voice) if voice else None

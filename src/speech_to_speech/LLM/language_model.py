@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import time
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Iterator, Sized
 from queue import Empty
@@ -59,9 +58,10 @@ from speech_to_speech.LLM.utils import (
     remove_unspeechable,
     resolve_auto_language,
     sent_tokenize_preserving_markdown_code,
+    voice_snapshot,
 )
 from speech_to_speech.LLM.voice_prompt import build_voice_system_prompt
-from speech_to_speech.LLM.wake_gate import WakeDecision, decide, parse_wake_config
+from speech_to_speech.LLM.wake_gate import WakeDecision, extend_awake_window, gate_turn, last_user_text
 from speech_to_speech.pipeline.cancel_scope import CancelScope
 from speech_to_speech.pipeline.handler_types import LLMIn, LLMOut
 from speech_to_speech.pipeline.messages import (
@@ -710,36 +710,19 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
 
     @staticmethod
     def _voice_snapshot(runtime_config: RuntimeConfig, response: RealtimeResponseCreateParams | None) -> Optional[str]:
-        """The voice this response should be spoken in, fixed at generation start."""
-        if response is not None and response.audio and response.audio.output and response.audio.output.voice:
-            return str(response.audio.output.voice)
-        audio = runtime_config.session.audio
-        output = audio.output if audio is not None else None
-        voice = output.voice if output is not None else None
-        return str(voice) if voice else None
+        return voice_snapshot(runtime_config, response)
 
     @staticmethod
     def _last_user_text(runtime_config: RuntimeConfig) -> str:
-        """Text of the newest user message in the conversation (transcript or typed)."""
-        for item in reversed(list(runtime_config.chat.buffer)):
-            if getattr(item, "role", None) == "user":
-                parts = getattr(item, "content", None) or []
-                texts = [p.text for p in parts if getattr(p, "type", None) == "input_text" and getattr(p, "text", None)]
-                return " ".join(texts).strip()
-        return ""
+        return last_user_text(runtime_config)
 
     def _wake_gate(self, runtime_config: RuntimeConfig) -> WakeDecision | None:
         """None when wake mode is not configured; else whether to answer this turn."""
-        cfg = parse_wake_config(runtime_config.session)
-        if cfg is None or not cfg.enabled:
-            return None
-        return decide(cfg, self._last_user_text(runtime_config), runtime_config.wake_awake_until)
+        return gate_turn(runtime_config)
 
     @staticmethod
     def _extend_awake_window(runtime_config: RuntimeConfig) -> None:
-        cfg = parse_wake_config(runtime_config.session)
-        if cfg is not None and cfg.enabled:
-            runtime_config.wake_awake_until = time.monotonic() + cfg.window_s
+        extend_awake_window(runtime_config)
 
     def process(self, request: LLMIn) -> Iterator[LLMOut]:
         ctx = StreamContext()

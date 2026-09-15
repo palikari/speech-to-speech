@@ -7,8 +7,8 @@ follows a reply. A sleep phrase ends the window early. A wake word that
 belongs to another persona (``others``) is not answered either: the client
 switches persona and asks for the response itself.
 
-The gate runs where the transcript is already available (the LLM handler),
-so detection costs nothing extra.
+The gate runs where the transcript is already available (the LLM handlers:
+mlx-lm and the OpenAI-compatible backends), so detection costs nothing extra.
 """
 
 from __future__ import annotations
@@ -130,3 +130,31 @@ def decide(cfg: WakeConfig, text: str, awake_until: float, now: Optional[float] 
     if now < awake_until:
         return WakeDecision(True, f"awake for {awake_until - now:.0f}s more")
     return WakeDecision(False, "asleep: not addressed")
+
+
+# ── Handler-side helpers (shared by the mlx-lm and OpenAI-compatible handlers) ──
+
+
+def last_user_text(runtime_config: Any) -> str:
+    """Text of the newest user message in the conversation (transcript or typed)."""
+    for item in reversed(list(runtime_config.chat.buffer)):
+        if getattr(item, "role", None) == "user":
+            parts = getattr(item, "content", None) or []
+            texts = [p.text for p in parts if getattr(p, "type", None) == "input_text" and getattr(p, "text", None)]
+            return " ".join(texts).strip()
+    return ""
+
+
+def gate_turn(runtime_config: Any) -> Optional[WakeDecision]:
+    """None when wake mode is not configured on the session; else whether to answer this turn."""
+    cfg = parse_wake_config(runtime_config.session)
+    if cfg is None or not cfg.enabled:
+        return None
+    return decide(cfg, last_user_text(runtime_config), runtime_config.wake_awake_until)
+
+
+def extend_awake_window(runtime_config: Any) -> None:
+    """After a reply, keep answering without a wake word for the configured window."""
+    cfg = parse_wake_config(runtime_config.session)
+    if cfg is not None and cfg.enabled:
+        runtime_config.wake_awake_until = time.monotonic() + cfg.window_s
