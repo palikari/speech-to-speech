@@ -604,6 +604,14 @@ _Update at the end of a session that changed something._
   a 0-100 scale). A bottom-right meter (five bars: full at rest, a third while ducked,
   the analyser adding motion) shows "<Persona>'s ambience" while a bed
   plays; it keeps polling while a bed is still decoding.
+- 2026-09-15 (ambience bug from testing): bars showed under Samantha, who has
+  no bed. Cause: a persona chosen in Settings > Save updated voice + prompt
+  but never told the player, so Esmerelda's bed kept looping and the meter
+  labelled it with the current persona. Save now swaps the bed and re-pushes
+  the persona tools like a voice hand-off does, and the meter names whose
+  bed is actually playing (`Ambience.bedPersona()`), so the label can never
+  disagree with the sound. Every persona change must go through either
+  `applyPersona()` or that Save branch.
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache
