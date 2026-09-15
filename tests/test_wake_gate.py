@@ -235,3 +235,58 @@ def test_a_standby_tool_call_closes_the_window_whatever_the_user_said():
         )
     )
     assert gate_turn(cfg).answer is False
+
+
+def test_client_notes_are_never_gated_and_only_overheard_turns_are_dropped():
+    from openai.types.realtime.realtime_conversation_item_user_message import (
+        Content as UserContent,
+    )
+    from openai.types.realtime.realtime_conversation_item_user_message import (
+        RealtimeConversationItemUserMessage,
+    )
+
+    from speech_to_speech.api.openai_realtime.runtime_config import RuntimeConfig
+    from speech_to_speech.LLM.wake_gate import drop_last_user_turn, extend_awake_window, gate_turn
+
+    cfg = RuntimeConfig()
+    cfg.apply_session_update(
+        RealtimeSessionCreateRequest.model_validate(
+            {
+                "type": "realtime",
+                "s2s_wake": {
+                    "enabled": True,
+                    "words": ["bob"],
+                    "others": {"samantha": ["sam"]},
+                    "sleep_phrases": ["goodbye"],
+                },
+            }
+        )
+    )
+
+    def say(text):
+        return cfg.chat.add_item(
+            RealtimeConversationItemUserMessage(
+                type="message", role="user", content=[UserContent(type="input_text", text=text)]
+            )
+        )
+
+    # A hand-off note mentions "goodbye" and is a user-role item: it must pass the gate untouched.
+    say("(Hand-off note, not spoken by the user: the previous persona has said its goodbye. You are Bob now.)")
+    d = gate_turn(cfg)
+    assert d.answer is True and d.reason == "client note"
+    extend_awake_window(cfg)
+    assert cfg.wake_awake_until > 0  # the note is not a sleep phrase
+    assert drop_last_user_turn(cfg) is None  # notes are never dropped
+
+    cfg.wake_awake_until = 0
+    # Addressed to another persona: declined, but kept so the client can re-request it after switching.
+    say("Hey Sam, you there?")
+    d = gate_turn(cfg)
+    assert d.answer is False and d.other_persona == "samantha" and d.drop is False
+    # A sleep phrase is an instruction: declined, kept.
+    say("Goodbye.")
+    assert gate_turn(cfg).drop is False
+    # Overheard talk: declined and dropped.
+    say("So anyway, the roof.")
+    d = gate_turn(cfg)
+    assert d.answer is False and d.drop is True

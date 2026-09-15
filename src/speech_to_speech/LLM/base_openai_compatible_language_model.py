@@ -938,7 +938,8 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
             logger.info("Wake gate: answering (%s)", gate.reason)
             return False
         logger.info("Wake gate: not answering (%s)", gate.reason)
-        drop_last_user_turn(request.runtime_config)
+        if gate.drop:
+            drop_last_user_turn(request.runtime_config)
         return True
 
     def _process_audio(self, request: LLMIn) -> Iterator[LLMOut]:

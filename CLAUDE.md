@@ -148,7 +148,7 @@ _Update at the end of a session that changed something._
   model / Warming up the voice; 25 s fail-safe), and assistant bubbles now
   stay while speaker output is audible (client emits `output-level`; chat
   view bumps the bubble's expiry, fades 3 s after the last word). Assets are
-  cache-busted with `?v=audio-24k-v41` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
+  cache-busted with `?v=audio-24k-v42` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
   editing demo JS/CSS or browsers keep the old files.
 - 2026-09-14 (tools): the LLM handler now parses the model's native
   `<tool_call><function=…><parameter=…>` XML blocks as well as the prompted
@@ -496,7 +496,17 @@ _Update at the end of a session that changed something._
   (`turn_put_assistant_to_sleep`). After a spoken mute the model kept
   believing the mic was off; lifting a hard mute now sends a user-role note
   that the mic is on again, and the tool results say the server enforces
-  standby so the model should answer whatever it receives.
+  standby so the model should answer whatever it receives. Second test
+  found three more: GLM paired set_listening with a switch_persona to Bob
+  ("I'll stay quiet" read as stepping aside; the tool result and
+  description now say standby is not a hand-off); the page's hand-off note
+  contains "goodbye" and matched a sleep phrase, so client notes (user-role
+  items starting with "(" and containing "not spoken by the user") are now
+  exempt from the gate, never dropped, and skipped by `last_user_text`;
+  and a turn addressed to another persona was dropped from the history
+  although the page re-requests it after switching, so `WakeDecision.drop`
+  is set only for overheard turns ("asleep: not addressed"). The wake label
+  reads "Standby when connected · ..." while idle.
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache

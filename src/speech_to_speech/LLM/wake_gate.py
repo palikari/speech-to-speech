@@ -37,6 +37,20 @@ class WakeDecision:
     answer: bool
     reason: str
     other_persona: Optional[str] = None
+    # Remove the turn from the history: only for overheard talk. A turn addressed
+    # to another persona is re-requested by the client after it switches, and a
+    # sleep phrase is an instruction worth keeping.
+    drop: bool = False
+
+
+# The page injects bookkeeping as user-role items (hand-off notes, "mic is on
+# again"). They are not speech and must never be gated or matched as phrases.
+CLIENT_NOTE_MARKER = "not spoken by the user"
+
+
+def is_client_note(text: str) -> bool:
+    t = (text or "").strip()
+    return t.startswith("(") and CLIENT_NOTE_MARKER in t
 
 
 def parse_wake_config(session: Any) -> Optional[WakeConfig]:
@@ -129,19 +143,26 @@ def decide(cfg: WakeConfig, text: str, awake_until: float, now: Optional[float] 
             return WakeDecision(False, f"addressed to {persona!r} as {other!r}", other_persona=persona)
     if now < awake_until:
         return WakeDecision(True, f"awake for {awake_until - now:.0f}s more")
-    return WakeDecision(False, "asleep: not addressed")
+    return WakeDecision(False, "asleep: not addressed", drop=True)
 
 
 # ── Handler-side helpers (shared by the mlx-lm and OpenAI-compatible handlers) ──
 
 
-def last_user_text(runtime_config: Any) -> str:
-    """Text of the newest user message in the conversation (transcript or typed)."""
+def _user_item_text(item: Any) -> str:
+    parts = getattr(item, "content", None) or []
+    texts = [p.text for p in parts if getattr(p, "type", None) == "input_text" and getattr(p, "text", None)]
+    return " ".join(texts).strip()
+
+
+def last_user_text(runtime_config: Any, *, skip_notes: bool = True) -> str:
+    """Text of the newest user message (transcript or typed), skipping client notes by default."""
     for item in reversed(list(runtime_config.chat.buffer)):
         if getattr(item, "role", None) == "user":
-            parts = getattr(item, "content", None) or []
-            texts = [p.text for p in parts if getattr(p, "type", None) == "input_text" and getattr(p, "text", None)]
-            return " ".join(texts).strip()
+            text = _user_item_text(item)
+            if skip_notes and is_client_note(text):
+                continue
+            return text
     return ""
 
 
@@ -163,6 +184,8 @@ def gate_turn(runtime_config: Any) -> Optional[WakeDecision]:
         return None
     if not _newest_is_user_turn(runtime_config):
         return WakeDecision(True, "tool follow-up")
+    if is_client_note(last_user_text(runtime_config, skip_notes=False)):
+        return WakeDecision(True, "client note")
     return decide(cfg, last_user_text(runtime_config), runtime_config.wake_awake_until)
 
 
@@ -207,6 +230,8 @@ def drop_last_user_turn(runtime_config: Any) -> Optional[str]:
     """
     for item in reversed(list(runtime_config.chat.buffer)):
         if getattr(item, "role", None) == "user":
+            if is_client_note(_user_item_text(item)):
+                return None
             item_id = getattr(item, "id", None)
             if item_id:
                 runtime_config.chat.rollback_generation(item_id, item_ids=set(), call_ids=set())

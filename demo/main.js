@@ -17,10 +17,10 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v41";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v42";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v41";
-import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v41";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v42";
+import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v42";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -277,7 +277,8 @@ const TOOL_DEFS = {
       "by name (go on standby, stop listening, stop answering, only answer when I say your name). " +
       "\"normal\": answer everything again (listen normally, stop needing the wake word). " +
       "\"muted\": switch the microphone off entirely; the user must tap the mic to unmute and " +
-      "cannot wake you by voice, so say so.",
+      "cannot wake you by voice, so say so. None of these is a persona hand-off: never pair this " +
+      "with switch_persona.",
     parameters: {
       type: "object",
       properties: { mode: { type: "string", enum: ["standby", "normal", "muted"] } },
@@ -753,9 +754,11 @@ function renderWakeToggle() {
   const current = currentPersonaId();
   const name = current ? PERSONAS[current].name : null;
   wakeBtn.setAttribute("aria-pressed", wakeEnabled ? "true" : "false");
+  const live = LIVE_STATES.has(currentState);
+  const wakeName = name === "Bob" ? "Hey Bob" : name ?? "the name";
   wakeLabel.textContent = wakeEnabled
-    ? `Standby · say "${name === "Bob" ? "Hey Bob" : name ?? "the name"}" to wake`
-    : "Listening · answers everything";
+    ? (live ? `Standby · say "${wakeName}" to wake` : `Standby when connected · "${wakeName}" wakes`)
+    : (live ? "Listening · answers everything" : "Listening when connected");
 }
 
 /** Standby (wake word required) on or off; persisted, shown under the orb, sent to the server. */
@@ -911,6 +914,7 @@ function syncMicMuteState() {
 /** @param {AppState} next */
 function setState(next) {
   currentState = next;
+  renderWakeToggle();
   const view = STATE_VIEWS[next];
   circleBtn.disabled = view.disabled;
   circleBtn.className = `circle ${STATE_CLASS[next]}`;
@@ -1665,12 +1669,12 @@ function applyListeningMode(mode) {
   if (mode === "standby") {
     setWakeEnabled(true);
     console.log("[listening] standby");
-    return `Standby is on: ${who} now answers only when addressed by name (${wakeWordsFor(current ?? "").join(", ") || "its name"}), and for a short while after each reply. The server enforces this: turns that are not for you never reach you, so answer every turn you do receive normally and never reply with silence or dots. Confirm in a few words.`;
+    return `Standby is on: ${who} now answers only when addressed by name (${wakeWordsFor(current ?? "").join(", ") || "its name"}), and for a short while after each reply. The server enforces this: turns that are not for you never reach you, so answer every turn you do receive normally and never reply with silence or dots. This is not a persona hand-off: you stay ${who}; do not call switch_persona. Confirm in a few words, or say nothing more if you already confirmed.`;
   }
   if (mode === "normal") {
     setWakeEnabled(false);
     console.log("[listening] normal");
-    return `Normal listening: ${who} answers everything again. Confirm in a few words.`;
+    return `Normal listening: ${who} answers everything again. Not a hand-off: you stay ${who}. Confirm in a few words, or say nothing more if you already confirmed.`;
   }
   if (mode === "muted") {
     const ok = hardMute(HARD_MUTE_CAPTION);

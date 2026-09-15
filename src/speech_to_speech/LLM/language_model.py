@@ -762,7 +762,8 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
             gate = self._wake_gate(runtime_config)
             if gate is not None and not gate.answer:
                 logger.info("Wake gate: not answering (%s)", gate.reason)
-                drop_last_user_turn(runtime_config)
+                if gate.drop:
+                    drop_last_user_turn(runtime_config)
                 yield EndOfResponse(
                     turn_id=ctx.turn_id,
                     turn_revision=ctx.turn_revision,
