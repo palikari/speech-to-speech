@@ -183,3 +183,111 @@ def test_cuisine_detection_and_weighted_rating():
         },
     ]
     assert [r["name"] for r in restaurants.sort_results(rows, "rating")] == ["Favourite", "Counter"]
+
+
+def test_inspection_parsing_and_history_text():
+    row = {
+        "inspectionId": "i1",
+        "columns": {"1": "Date: 05-26-2026", "2": "Inspection Purpose: Routine", "3": "Score: 87"},
+        "violations": {
+            "a": [
+                "3 - proper cold holding temperatures",
+                "511-6-1-.04(6)(f) - Time/Temperature",
+                "Points: 9",
+                "Corrected during inspection?: Yes",
+                "Repeat: No",
+            ],
+            "b": [
+                "17 - insects, rodents, and animals not present",
+                "511-6-1-.07(5)(k)",
+                "Points: 3",
+                "Repeat: Yes",
+                "Inspector NotesObserved flies.",
+            ],
+        },
+        "printablePath": "../../_templates/report.cfm?id=1",
+    }
+    insp = ga_health.parse_inspection(row)
+    assert insp["score"] == 87 and insp["purpose"] == "Routine" and insp["date"] == "05-26-2026"
+    assert insp["violations"][0]["points"] == 9 and insp["violations"][0]["corrected"] is True
+    assert insp["violations"][1]["repeat"] is True and insp["violations"][1]["notes"] == "Observed flies."
+    assert insp["report_url"].startswith("https://ga.healthinspections.us/")
+
+    older = {"date": "11-25-2025", "score": 90, "purpose": "Routine", "violations": [{}] * 3}
+    oldest = {"date": "05-01-2025", "score": 95, "purpose": "Routine", "violations": [{}] * 2}
+    text = restaurants.format_history(
+        {"name": "THOOM THAI & SUSHI", "address": "11030 MEDLOCK BRIDGE STE 150 JOHNS CREEK, GA 30097"},
+        [insp, older, oldest],
+        [],
+    )
+    assert text.startswith(
+        "Thoom Thai & Sushi (11030 Medlock Bridge Ste 150 Johns Creek, GA 30097), Georgia DPH scores, newest first: 87 on 26 May 2026 (routine, 2 violations); 90 on 25 Nov 2025"
+    )
+    assert "Trend: slipping." in text and "proper cold holding temperatures (9 pts)" in text and "(repeat)" in text
+
+
+def test_name_matching_rejects_lookalikes_and_area_prefers_street_or_zip():
+    assert restaurants.name_matches("Thoom Thai", "THOOM THAI & SUSHI")
+    assert restaurants.name_matches("Thai Squared", "Thai Squared")
+    assert not restaurants.name_matches("Nowhere Grill", "Nowhere Bar")
+    assert not restaurants.name_matches("", "Anything")
+
+
+@pytest.mark.asyncio
+async def test_inspection_history_picks_the_location_in_the_asked_area(monkeypatch):
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def get(self, url, headers=None, timeout=None):
+            if "/inspectionsData/" in url:
+                est = url.rsplit("/", 1)[1]
+                score = 92 if est == "jc" else 80
+                return httpx.Response(
+                    200,
+                    json=[
+                        {
+                            "inspectionId": est,
+                            "columns": {
+                                "1": "Date: 06-29-2026",
+                                "2": "Inspection Purpose: Routine",
+                                "3": f"Score: {score}",
+                            },
+                            "violations": {},
+                        }
+                    ],
+                )
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": "alp",
+                        "name": "Thai Squared",
+                        "mapAddress": "5530 WINDWARD PKWY STE 140A ALPHARETTA, GA 30004",
+                        "columns": {"1": "Last Inspection Score: 80"},
+                    },
+                    {
+                        "id": "jc",
+                        "name": "Thai Squared",
+                        "mapAddress": "6955 MCGINNIS FERRY RD STE 115 SUWANEE, GA 30024",
+                        "columns": {"1": "Last Inspection Score: 92"},
+                    },
+                ],
+            )
+
+    monkeypatch.setattr(restaurants.httpx, "AsyncClient", FakeClient)
+    monkeypatch.setattr(restaurants, "health_cache", restaurants.HealthCache())
+    restaurants._inspection_cache.clear()
+    out = await restaurants.inspection_history(
+        restaurants.InspectionsRequest(name="Thai Squared", area="McGinnis Ferry")
+    )
+    assert out["found"] and "6955 Mcginnis Ferry" in out["address"] and out["inspections"][0]["score"] == 92
+    assert "Other locations with a similar name: 1" in out["text"]
+    missing = await restaurants.inspection_history(restaurants.InspectionsRequest(name="Nowhere Grill"))
+    assert missing["found"] is False and "No Georgia inspection record" in missing["text"]

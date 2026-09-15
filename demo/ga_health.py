@@ -84,3 +84,74 @@ async def search(
             break
         await asyncio.sleep(PAGE_DELAY_S)
     return results
+
+
+# ── Inspection history ────────────────────────────────────────────────────────
+
+_INSPECTION_LABELS = {
+    "Date": "date",  # MM-DD-YYYY
+    "Inspection Purpose": "purpose",  # Routine, Follow-up, ...
+    "Score": "score",
+    "Inspector": "inspector",
+}
+
+
+def parse_violation(lines: list) -> dict:
+    """One violation entry (a list of strings) -> item, description, points, repeat, notes."""
+    out: dict[str, Any] = {}
+    unmatched: list[str] = []
+    for raw in lines:
+        line = str(raw).strip()
+        if line.startswith("Points:"):
+            try:
+                out["points"] = int(line.partition(":")[2])
+            except ValueError:
+                out["points"] = None
+        elif line.startswith("Corrected during inspection?:"):
+            out["corrected"] = line.partition(":")[2].strip() == "Yes"
+        elif line.startswith("Repeat:"):
+            out["repeat"] = line.partition(":")[2].strip() == "Yes"
+        elif line.startswith("Inspector Notes"):
+            out["notes"] = line[len("Inspector Notes") :].strip()
+        else:
+            unmatched.append(line)
+    if unmatched:
+        code, _, desc = unmatched[0].partition(" - ")
+        out["item"] = code.strip()
+        out["description"] = desc.strip() or code.strip()
+    if len(unmatched) > 1:
+        cite, _, title = unmatched[1].partition(" - ")
+        out["regulation"] = cite.strip()
+        out["regulation_title"] = title.strip()
+    return out
+
+
+def parse_inspection(row: dict) -> dict:
+    out: dict[str, Any] = {
+        "inspection_id": row.get("inspectionId"),
+        "violations": [parse_violation(v) for v in (row.get("violations") or {}).values()],
+    }
+    for value in (row.get("columns") or {}).values():
+        label, _, rest = str(value).partition(":")
+        field = _INSPECTION_LABELS.get(label.strip())
+        if field:
+            out[field] = rest.strip()
+    try:
+        out["score"] = int(out["score"]) if "score" in out else None
+    except ValueError:
+        out["score"] = None
+    path = row.get("printablePath", "")
+    out["report_url"] = urllib.parse.urljoin(f"{BASE.rsplit('/', 1)[0]}/", path) if path else ""
+    return out
+
+
+async def get_inspections(client: httpx.AsyncClient, est_id: str) -> list[dict]:
+    """Inspection history for one establishment (``id`` from a search row), newest first as the portal lists them."""
+    resp = await client.get(f"{BASE}/inspectionsData/{est_id}", headers=UA, timeout=15.0)
+    if resp.status_code != 200:
+        return []
+    try:
+        rows = resp.json()
+    except ValueError:
+        return []
+    return [parse_inspection(r) for r in rows or []]

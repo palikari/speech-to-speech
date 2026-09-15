@@ -17,10 +17,10 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v35";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v36";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v35";
-import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v35";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v36";
+import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v36";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -57,6 +57,8 @@ const PERSONA_HANDOFF =
   + " count days or do sums in your head, and if the result contradicts something you said"
   + " earlier, the tool is right. For where to eat, call find_restaurants: it returns Google"
   + " ratings and official health inspection scores; read out the top two or three with both."
+  + " For one place's inspection history, scores over time or violations, call"
+  + " restaurant_inspections and read out the recent scores with their dates."
   + " When the user asks for a poem, song, story, list or explanation, that request overrides"
   + " the short-reply rule: give the whole thing in one reply, every line of it, without a"
   + " preamble and without waiting to be asked for more. Never promise something for later."
@@ -227,6 +229,25 @@ const TOOL_DEFS = {
         max_results: { type: "integer", description: "How many to return, 1-8 (default 5)." },
       },
       required: ["query"],
+    },
+  },
+  restaurant_inspections: {
+    type: "function",
+    name: "restaurant_inspections",
+    description:
+      "The recent official Georgia health inspection history for one restaurant: the last few scores " +
+      "with dates, the trend, and the latest violations. Use it when the user asks about a place's " +
+      "health scores, inspections, violations or how clean it is. Pass the restaurant's name and, " +
+      "if known, the street, city or zip to pick the right location (from an earlier " +
+      "find_restaurants result if there was one).",
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Restaurant name as the user said it." },
+        area: { type: "string", description: "Street, city or zip that identifies the location." },
+        limit: { type: "integer", description: "How many recent inspections, 1-10 (default 3)." },
+      },
+      required: ["name"],
     },
   },
   web_fetch: {
@@ -513,6 +534,8 @@ let serverSearchKey = false;
 let serverFetch = false;
 /** The server can search restaurants (Google Places key configured). */
 let serverRestaurants = false;
+/** The server can look up Georgia inspection history (public portal, no key). */
+let serverInspections = false;
 // A user-supplied key (fallback when the deploy has none). localStorage only.
 let userSearchKey = localStorage.getItem(STORAGE_KEYS.searchKey) || "";
 /** @type {MediaStream | null} */
@@ -757,6 +780,7 @@ function activeToolDefs() {
   }
   if (toolsEnabled.camera_snapshot) defs.push(TOOL_DEFS.camera_snapshot);
   if (toolsEnabled.find_restaurants && serverRestaurants) defs.push(TOOL_DEFS.find_restaurants);
+  if (toolsEnabled.find_restaurants && serverInspections) defs.push(TOOL_DEFS.restaurant_inspections);
   return defs;
 }
 
@@ -1335,6 +1359,9 @@ async function runTool(name, argsJson, callId) {
     } else if (name === "find_restaurants") {
       const found = await execFindRestaurants(args);
       result = { output: found.text, cards: found.results };
+    } else if (name === "restaurant_inspections") {
+      const history = await execInspections(args);
+      result = { output: history.text, cards: history.found ? [history] : [] };
     } else if (name === "date_math" || name === "calculate") {
       result.output = runLocalTool(name, args) ?? `Unknown tool: ${name}`;
     } else if (name === "camera_snapshot") {
@@ -1435,6 +1462,27 @@ async function execFindRestaurants(args) {
   return { text: `${json.text}${note}`, results: Array.isArray(json.results) ? json.results : [] };
 }
 
+/** @param {Record<string, unknown>} args @returns {Promise<{ text: string, found: boolean, name?: string, address?: string, inspections?: unknown[] }>} */
+async function execInspections(args) {
+  const name = typeof args.name === "string" ? args.name.trim() : "";
+  if (!name) return { text: "No restaurant name given.", found: false };
+  /** @type {Record<string, unknown>} */
+  const body = { name };
+  if (typeof args.area === "string" && args.area.trim()) body.area = args.area.trim();
+  if (typeof args.limit === "number") body.limit = args.limit;
+  const res = await fetch("api/restaurant_inspections", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    let detail = String(res.status);
+    try { const j = await res.json(); if (j.detail) detail = j.detail; } catch {}
+    throw new Error(`inspection lookup error (${detail})`);
+  }
+  return await res.json();
+}
+
 /** @param {string} url @returns {Promise<string>} */
 async function execWebFetch(url) {
   if (!url) return "No URL provided.";
@@ -1490,6 +1538,7 @@ async function fetchConfig() {
       serverSearchKey = !!json.search;
       serverFetch = !!json.fetch;
       serverRestaurants = !!json.restaurants;
+      serverInspections = !!json.inspections;
       lbMode = !!json.lb;
       // Lock to LB mode only when the deploy reports a load balancer.
       allowDirect = json.allowDirect ?? !lbMode;

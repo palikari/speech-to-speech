@@ -357,6 +357,143 @@ def format_text(req: RestaurantsRequest, results: list[dict]) -> str:
     return "\n".join(lines)
 
 
+# ── Inspection history ───────────────────────────────────────────────────────
+
+
+class InspectionsRequest(BaseModel):
+    name: str
+    area: Optional[str] = None
+    limit: int = Field(default=3, ge=1, le=10)
+
+
+_inspection_cache: dict[str, tuple[float, list[dict]]] = {}
+INSPECTION_CACHE_TTL_S = 24 * 3600
+
+
+def _date_key(raw: str) -> tuple:
+    m = re.match(r"(\d{2})-(\d{2})-(\d{4})", raw or "")
+    return (int(m.group(3)), int(m.group(1)), int(m.group(2))) if m else (0, 0, 0)
+
+
+def name_matches(asked: str, portal_name: str) -> bool:
+    """Every word of the asked name (joiners aside) appears in the portal name, as a word prefix."""
+    asked_words = [w for w in re.findall(r"[a-z0-9']+", asked.lower()) if w not in _JOINERS]
+    portal_words = re.findall(r"[a-z0-9']+", portal_name.lower())
+    return bool(asked_words) and all(any(pw.startswith(aw) for pw in portal_words) for aw in asked_words)
+
+
+def _cached_rows_matching(name: str) -> list[dict]:
+    """Portal rows already fetched for a place (from find_restaurants) whose name matches."""
+    return [row for _stamp, row in health_cache._rows.values() if row and name_matches(name, row.get("name", ""))]
+
+
+async def _resolve_establishment(
+    client: httpx.AsyncClient, name: str, area: Optional[str]
+) -> tuple[Optional[dict], list[dict]]:
+    """Best portal row for a spoken restaurant name, plus the other candidates."""
+    rows = _cached_rows_matching(name)
+    if not rows:
+        for keyword in name_keywords(name):
+            rows = [r for r in await ga_health.search(client, keyword) if name_matches(name, r.get("name", ""))]
+            if rows:
+                break
+    if not rows:
+        return None, []
+    if area:
+        # City, street or zip: the portal files places under mailing cities, so
+        # "Johns Creek" may not appear in a Johns Creek address, but the street will.
+        a_words = [w for w in re.findall(r"[a-z0-9]+", area.lower()) if w not in _JOINERS]
+        preferred = [r for r in rows if all(w in r.get("address", "").lower() for w in a_words)]
+        if preferred:
+            rows = preferred + [r for r in rows if r not in preferred]
+    return rows[0], rows[1:]
+
+
+def _title_address(addr: str) -> str:
+    return re.sub(
+        r"\b(Ga|Ne|Nw|Se|Sw|Ste)\b", lambda m: m.group(1).upper() if m.group(1) != "Ste" else "Ste", addr.title()
+    )
+
+
+def format_history(row: dict, inspections: list[dict], others: list[dict]) -> str:
+    head = f"{row['name'].title()} ({_title_address(row['address'])})"
+    if not inspections:
+        return f"{head}: no inspections on file."
+    parts = []
+    for insp in inspections:
+        n = len(insp.get("violations") or [])
+        purpose = (insp.get("purpose") or "inspection").lower()
+        parts.append(
+            f"{insp.get('score')} on {_inspection_date(insp.get('date', ''))} ({purpose}, {n} violation{'s' if n != 1 else ''})"
+        )
+    text = f"{head}, Georgia DPH scores, newest first: " + "; ".join(parts) + "."
+    scores = [i.get("score") for i in inspections if isinstance(i.get("score"), int)]
+    if len(scores) >= 2:
+        trend = "improving" if scores[0] > scores[-1] else "slipping" if scores[0] < scores[-1] else "steady"
+        text += f" Trend: {trend}."
+    latest = inspections[0].get("violations") or []
+    notable = sorted(latest, key=lambda v: -(v.get("points") or 0))[:3]
+    if notable:
+        text += (
+            " Latest violations: "
+            + "; ".join(
+                f"{v.get('description', v.get('item', 'violation'))}"
+                + (f" ({v['points']} pts)" if v.get("points") else "")
+                + (" (repeat)" if v.get("repeat") else "")
+                for v in notable
+            )
+            + "."
+        )
+    if others:
+        text += f" Other locations with a similar name: {len(others)}."
+    return text
+
+
+async def inspection_history(req: InspectionsRequest) -> dict:
+    async with httpx.AsyncClient() as client:
+        row, others = await _resolve_establishment(client, req.name, req.area)
+        if row is None:
+            return {
+                "name": req.name,
+                "found": False,
+                "text": f"No Georgia inspection record found for {req.name!r}.",
+                "inspections": [],
+            }
+        est_id = row.get("id", "")
+        hit = _inspection_cache.get(est_id)
+        if hit and time.monotonic() - hit[0] < INSPECTION_CACHE_TTL_S:
+            inspections = hit[1]
+        else:
+            inspections = await ga_health.get_inspections(client, est_id)
+            inspections.sort(key=lambda i: _date_key(i.get("date", "")), reverse=True)
+            _inspection_cache[est_id] = (time.monotonic(), inspections)
+    recent = inspections[: req.limit]
+    logger.info("restaurant_inspections %r -> %s, %d inspections", req.name, row.get("name"), len(inspections))
+    return {
+        "name": row.get("name", "").title(),
+        "address": _title_address(row.get("address", "")),
+        "found": True,
+        "text": format_history(row, recent, others),
+        "inspections": [
+            {
+                "date": _inspection_date(i.get("date", "")),
+                "score": i.get("score"),
+                "purpose": i.get("purpose", ""),
+                "violations": [
+                    {
+                        "description": v.get("description", ""),
+                        "points": v.get("points"),
+                        "repeat": bool(v.get("repeat")),
+                    }
+                    for v in (i.get("violations") or [])
+                ],
+                "report_url": i.get("report_url", ""),
+            }
+            for i in recent
+        ],
+    }
+
+
 async def find_restaurants(req: RestaurantsRequest) -> dict:
     if not PLACES_KEY:
         raise RuntimeError("Restaurant search is not configured.")

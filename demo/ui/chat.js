@@ -18,9 +18,24 @@
 
 import { $, escHtml, DEBUG } from "./dom.js";
 
+/** One restaurant's recent inspections: a score timeline plus the latest violations.
+ *  @param {unknown} cards */
+function renderInspectionCard(cards) {
+  const h = /** @type {any} */ (Array.isArray(cards) ? cards[0] : null);
+  if (!h || !Array.isArray(h.inspections) || h.inspections.length === 0) return "";
+  const grade = (s) => (s >= 90 ? "good" : s >= 80 ? "fair" : "poor");
+  const scores = h.inspections.map((i) => `<li><span class="rest-score ${grade(Number(i.score))}">${escHtml(String(i.score ?? "—"))}</span><span class="insp-date">${escHtml(i.date || "")}</span><span class="insp-purpose">${escHtml(String(i.purpose || "").toLowerCase())}</span></li>`);
+  const latest = (h.inspections[0].violations || []).slice(0, 4);
+  const violations = latest.length
+    ? `<ul class="insp-violations">${latest.map((v) => `<li>${escHtml(v.description || "violation")}${v.points ? ` <span class="insp-pts">${v.points} pts</span>` : ""}${v.repeat ? ` <span class="insp-repeat">repeat</span>` : ""}</li>`).join("")}</ul>`
+    : `<div class="insp-none">No violations at the latest inspection.</div>`;
+  return `<div class="insp-card"><div class="rest-name">${escHtml(h.name || "")}</div><div class="rest-addr">${escHtml(h.address || "")}</div><ul class="insp-scores">${scores.join("")}</ul>${violations}</div>`;
+}
+
 /** Result cards for tools that return structured rows (find_restaurants).
  *  @param {string} name @param {unknown} cards */
 function renderToolCards(name, cards) {
+  if (name === "restaurant_inspections") return renderInspectionCard(cards);
   if (name !== "find_restaurants" || !Array.isArray(cards) || cards.length === 0) return "";
   const price = (n) => (typeof n === "number" ? "$".repeat(Math.max(1, n)) : "");
   const grade = (s) => (s >= 90 ? "good" : s >= 80 ? "fair" : "poor");
@@ -837,7 +852,7 @@ export class ChatView {
     this._appendHistTool(name, argsJson, output, cards);
     if (image) this._appendHistImage(image); // show the captured frame below the call
     const html = renderToolCards(name, cards);
-    if (html) this._spawnCardsBubble(name === "find_restaurants" ? "Restaurants" : name, html);
+    if (html) this._spawnCardsBubble(name === "find_restaurants" ? "Restaurants" : name === "restaurant_inspections" ? "Health inspections" : name, html);
     this._markUnread();
   }
 }

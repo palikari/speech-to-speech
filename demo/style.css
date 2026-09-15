@@ -2914,3 +2914,15 @@ body.cam-on .footer {
 .bubble.cards .rest-list { margin: 6px 0 0; gap: 5px; }
 .bubble.cards .rest-card { padding: 6px 8px; }
 .bubble.cards .rest-score { min-width: 34px; padding: 5px 0; font-size: 13px; }
+
+/* ── Inspection history card (restaurant_inspections tool) ──────────────── */
+.insp-card { margin-top: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-elev-2); }
+.insp-scores { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
+.insp-scores li { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--text-dim); }
+.insp-date { color: var(--text); }
+.insp-purpose { color: var(--text-faint); }
+.insp-violations { margin: 8px 0 0; padding-left: 18px; font-size: 12px; color: var(--text-dim); }
+.insp-violations li { margin: 2px 0; }
+.insp-pts { color: var(--processing); font-family: var(--font-mono); font-size: 11px; }
+.insp-repeat { color: var(--error); font-family: var(--font-mono); font-size: 11px; }
+.insp-none { margin-top: 8px; font-size: 12px; color: var(--success); }

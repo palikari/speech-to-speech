@@ -263,6 +263,8 @@ def config():
         "fetch": bool(OLLAMA_KEY),
         # Restaurant search (Google Places + Georgia health scores) needs a Places key.
         "restaurants": bool(restaurants.PLACES_KEY),
+        # Inspection history needs only the public Georgia portal.
+        "inspections": True,
         "lb": bool(LOAD_BALANCER_URL),
         "allowDirect": not LOAD_BALANCER_URL,
         # Deploy-pinned direct s2s URL (empty when unset). Not a secret: the
@@ -423,6 +425,18 @@ async def find_restaurants(req: restaurants.RestaurantsRequest):
     except RuntimeError as exc:
         logger.warning("restaurant search failed: %s", exc)
         raise HTTPException(status_code=502, detail=str(exc)[:200])
+
+
+@app.post("/api/restaurant_inspections")
+async def restaurant_inspections(req: restaurants.InspectionsRequest):
+    """Recent Georgia DPH inspections for one restaurant, for the model's restaurant_inspections tool."""
+    if not (req.name or "").strip():
+        raise HTTPException(status_code=400, detail="Empty name.")
+    try:
+        return JSONResponse(await restaurants.inspection_history(req))
+    except httpx.RequestError as exc:
+        logger.warning("inspection lookup unreachable: %r", exc)
+        raise HTTPException(status_code=502, detail="Inspection portal unreachable.")
 
 
 @app.post("/api/fetch")

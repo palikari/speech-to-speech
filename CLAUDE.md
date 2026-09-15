@@ -148,7 +148,7 @@ _Update at the end of a session that changed something._
   model / Warming up the voice; 25 s fail-safe), and assistant bubbles now
   stay while speaker output is audible (client emits `output-level`; chat
   view bumps the bubble's expiry, fades 3 s after the last word). Assets are
-  cache-busted with `?v=audio-24k-v35` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
+  cache-busted with `?v=audio-24k-v36` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
   editing demo JS/CSS or browsers keep the old files.
 - 2026-09-14 (tools): the LLM handler now parses the model's native
   `<tool_call><function=…><parameter=…>` XML blocks as well as the prompted
@@ -430,6 +430,20 @@ _Update at the end of a session that changed something._
   panel and a dismiss button. It lingers 45 s, extended to 25 s after the
   last spoken word while the reply plays (`onAssistantAudible`), one at a
   time, and is evicted like any bubble when three newer ones arrive.
+- 2026-09-15 (inspection history): `restaurant_inspections` tool +
+  `/api/restaurant_inspections` (no key needed; Georgia portal only). Ported
+  the portal's `inspectionsData/<id>` endpoint (`ga_health.get_inspections`,
+  `parse_inspection`, `parse_violation`). Resolution: rows cached by
+  find_restaurants first, else a portal name-prefix search; every word of
+  the asked name must appear in the portal name (a made-up "Nowhere Grill"
+  no longer matches "Nowhere Bar"); `area` matches street, city or zip in
+  the portal address (the portal files Johns Creek places under Duluth or
+  Suwanee mailing cities, so the model is told to pass the street from an
+  earlier result). Text: last N scores with dates and purpose, a trend
+  word, the latest violations by points with repeat flags, and a count of
+  other same-name locations; the page shows a "Health inspections" card
+  (score timeline + violations) in the history and as a live bubble.
+  Inspections cached 24 h per establishment.
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache
