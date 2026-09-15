@@ -169,8 +169,19 @@ def _webrtc_calls_url(s2s_url: str) -> str:
 
 
 SERPER_URL = "https://google.serper.dev/search"
+# Ollama's web search (ollama.com account; usage draws from the account's
+# included quota). Preferred over Serper when its key is present: each result
+# carries a passage of the page text rather than a one-line snippet, and
+# /api/fetch can read a whole page. The key never leaves this process.
+OLLAMA_KEY = os.environ.get("OLLAMA_API_KEY", "").strip()
+OLLAMA_SEARCH_URL = "https://ollama.com/api/web_search"
+OLLAMA_FETCH_URL = "https://ollama.com/api/web_fetch"
 # Cap results so the tool output stays small enough to feed back to the model.
 MAX_RESULTS = 5
+# Per-result passage cap for voice replies (Ollama passages run to thousands of chars).
+PASSAGE_CHARS = 700
+# Page text cap for /api/fetch.
+FETCH_CHARS = 8000
 HERE = os.path.dirname(os.path.abspath(__file__))
 LB_USER_AGENT = "speech-to-speech-demo"
 LB_FAILURE_HEADER_NAMES = (
@@ -229,9 +240,13 @@ async def _sweeper():
 
 class SearchRequest(BaseModel):
     query: str
-    # Optional user-supplied key (fallback when the deploy has no server key).
+    # Optional user-supplied Serper key (fallback when the deploy has no server key).
     # Used for this request only; never stored.
     key: str | None = None
+
+
+class FetchRequest(BaseModel):
+    url: str
 
 
 @app.get("/api/config")
@@ -241,7 +256,10 @@ def config():
     whether HF sign-in is available, and whether the user may instead set a direct
     s2s server URL. The LB address itself is intentionally NOT included."""
     return {
-        "search": bool(SERPER_KEY),
+        "search": bool(OLLAMA_KEY or SERPER_KEY),
+        "searchProvider": "ollama" if OLLAMA_KEY else ("serper" if SERPER_KEY else ""),
+        # Whole-page reads need Ollama's key.
+        "fetch": bool(OLLAMA_KEY),
         "lb": bool(LOAD_BALANCER_URL),
         "allowDirect": not LOAD_BALANCER_URL,
         # Deploy-pinned direct s2s URL (empty when unset). Not a secret: the
@@ -284,15 +302,53 @@ async def me(request: Request):
     return resp
 
 
+async def _ollama_post(url: str, payload: dict, what: str) -> dict:
+    """POST to an ollama.com endpoint with the server's key; errors are relayed without the key."""
+    headers = {"Authorization": f"Bearer {OLLAMA_KEY}", "Content-Type": "application/json"}
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as http:
+            resp = await http.post(url, headers=headers, json=payload)
+    except httpx.RequestError as exc:
+        logger.warning("Ollama %s unreachable: %r", what, exc)
+        raise HTTPException(status_code=502, detail=f"{what} provider unreachable.")
+    if resp.status_code != 200:
+        logger.warning("Ollama %s error %s: %s", what, resp.status_code, resp.text[:300])
+        raise HTTPException(status_code=502, detail=f"{what} provider error ({resp.status_code})")
+    try:
+        return resp.json()
+    except ValueError:
+        raise HTTPException(status_code=502, detail=f"{what} provider returned no JSON")
+
+
+async def _ollama_search(query: str) -> JSONResponse:
+    data = await _ollama_post(OLLAMA_SEARCH_URL, {"query": query, "max_results": MAX_RESULTS}, "Search")
+    results = []
+    for item in (data.get("results") or [])[:MAX_RESULTS]:
+        passage = " ".join(str(item.get("content") or "").split())[:PASSAGE_CHARS]
+        results.append({"title": item.get("title", ""), "snippet": passage, "url": item.get("url", "")})
+    logger.info(
+        "web_search (ollama) %r -> %s",
+        query,
+        " | ".join(f"{r['title'][:60]}" for r in results[:3]) or "no results",
+    )
+    return JSONResponse({"query": query, "answer": None, "results": results, "provider": "ollama"})
+
+
 @app.post("/api/search")
 async def search(req: SearchRequest):
-    """Proxy a Google search via Serper.dev. The key stays on the server unless
-    the user brought their own (then theirs is used for this request only)."""
+    """Web search for the model. Ollama's search when its key is configured
+    (page passages, see /api/fetch for whole pages); otherwise Google via
+    Serper.dev with the server key, or the user's own Serper key for this
+    request only."""
     query = (req.query or "").strip()
     if not query:
         raise HTTPException(status_code=400, detail="Empty query.")
 
-    key = (req.key or "").strip() or SERPER_KEY
+    user_key = (req.key or "").strip()
+    if OLLAMA_KEY and not user_key:
+        return await _ollama_search(query)
+
+    key = user_key or SERPER_KEY
     if not key:
         # No server key and the user didn't supply one — search is unavailable.
         raise HTTPException(status_code=503, detail="Search is not configured.")
@@ -345,7 +401,30 @@ async def search(req: SearchRequest):
         (answer or "")[:160],
         " | ".join(f"{r['title'][:60]}: {r['snippet'][:120]}" for r in results[:3]) or "no results",
     )
-    return JSONResponse({"query": query, "answer": answer, "results": results})
+    return JSONResponse({"query": query, "answer": answer, "results": results, "provider": "serper"})
+
+
+@app.post("/api/fetch")
+async def fetch_page(req: FetchRequest):
+    """Readable text of one web page, for the model's web_fetch tool (Ollama only)."""
+    url = (req.url or "").strip()
+    if not url.lower().startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="Only http(s) URLs can be fetched.")
+    if not OLLAMA_KEY:
+        raise HTTPException(status_code=503, detail="Page fetch is not configured.")
+    data = await _ollama_post(OLLAMA_FETCH_URL, {"url": url}, "Fetch")
+    content = " ".join(str(data.get("content") or "").split())
+    truncated = len(content) > FETCH_CHARS
+    logger.info("web_fetch %r -> %d chars%s", url[:120], len(content), " (truncated)" if truncated else "")
+    return JSONResponse(
+        {
+            "url": url,
+            "title": data.get("title", ""),
+            "content": content[:FETCH_CHARS],
+            "truncated": truncated,
+            "links": [str(link) for link in (data.get("links") or [])[:10]],
+        }
+    )
 
 
 @app.post("/api/calls")

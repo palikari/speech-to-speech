@@ -17,9 +17,9 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v30";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v31";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v30";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v31";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -178,12 +178,25 @@ const TOOL_DEFS = {
     name: "web_search",
     description:
       "Search the web for current or factual information you don't already know " +
-      "(news, prices, facts, documentation). Returns the top results with titles, " +
-      "snippets and URLs.",
+      "(news, prices, facts, documentation). Returns the top results, each with a " +
+      "passage of the page text and its URL. If the passages do not contain the " +
+      "answer, call web_fetch on the most relevant URL to read the page.",
     parameters: {
       type: "object",
       properties: { query: { type: "string", description: "The search query." } },
       required: ["query"],
+    },
+  },
+  web_fetch: {
+    type: "function",
+    name: "web_fetch",
+    description:
+      "Read the text of one web page, usually a URL from a web_search result, when " +
+      "the search passages were not enough to answer. Returns the page's title and text.",
+    parameters: {
+      type: "object",
+      properties: { url: { type: "string", description: "The http(s) URL to read." } },
+      required: ["url"],
     },
   },
   camera_snapshot: {
@@ -450,6 +463,8 @@ let activeTransport = "ws";
 let toolsEnabled = loadTools();
 // Whether the server holds a Serper key (learned from /api/config on load).
 let serverSearchKey = false;
+/** The server can read whole pages (Ollama search key configured). */
+let serverFetch = false;
 // A user-supplied key (fallback when the deploy has none). localStorage only.
 let userSearchKey = localStorage.getItem(STORAGE_KEYS.searchKey) || "";
 /** @type {MediaStream | null} */
@@ -684,7 +699,10 @@ let offeredPersona = /** @type {string | null} */ (null);
 function activeToolDefs() {
   const defs = [];
   defs.push(TOOL_DEFS.switch_persona);
-  if (toolsEnabled.web_search && searchAvailable()) defs.push(TOOL_DEFS.web_search);
+  if (toolsEnabled.web_search && searchAvailable()) {
+    defs.push(TOOL_DEFS.web_search);
+    if (serverFetch) defs.push(TOOL_DEFS.web_fetch);
+  }
   if (toolsEnabled.camera_snapshot) defs.push(TOOL_DEFS.camera_snapshot);
   return defs;
 }
@@ -1246,6 +1264,9 @@ async function runTool(name, argsJson, callId) {
     } else if (name === "web_search") {
       const query = typeof args.query === "string" ? args.query : "";
       result.output = await execWebSearch(query);
+    } else if (name === "web_fetch") {
+      const url = typeof args.url === "string" ? args.url : "";
+      result.output = await execWebFetch(url);
     } else if (name === "camera_snapshot") {
       const dataUrl = captureSnapshot();
       if (dataUrl) {
@@ -1289,12 +1310,32 @@ async function execWebSearch(query) {
   // rather than its (older) training knowledge.
   const today = new Date().toISOString().slice(0, 10);
   /** @type {string[]} */
-  const lines = [`Google search result from ${today}:`];
+  const lines = [`Web search results from ${today}:`];
   if (json.answer) lines.push(`Answer: ${json.answer}`);
   for (const r of json.results || []) {
     lines.push(`- ${r.title}: ${r.snippet} (${r.url})`);
   }
   return lines.length > 1 ? lines.join("\n") : `${lines[0]}\nNo results found.`;
+}
+
+/** @param {string} url @returns {Promise<string>} */
+async function execWebFetch(url) {
+  if (!url) return "No URL provided.";
+  const res = await fetch("api/fetch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  });
+  if (!res.ok) {
+    let detail = String(res.status);
+    try { const j = await res.json(); if (j.detail) detail = j.detail; } catch {}
+    throw new Error(`fetch error (${detail})`);
+  }
+  const json = await res.json();
+  const today = new Date().toISOString().slice(0, 10);
+  const head = `Page text fetched ${today} from ${json.url}${json.title ? ` — ${json.title}` : ""}:`;
+  const body = json.content || "(no readable text)";
+  return `${head}\n${body}${json.truncated ? "\n[page text truncated]" : ""}`;
 }
 
 /** Learn server config (search key + connection target), then refresh the UI. */
@@ -1330,6 +1371,7 @@ async function fetchConfig() {
       const json = await res.json();
       renderBuildStamp(json.build);
       serverSearchKey = !!json.search;
+      serverFetch = !!json.fetch;
       lbMode = !!json.lb;
       // Lock to LB mode only when the deploy reports a load balancer.
       allowDirect = json.allowDirect ?? !lbMode;

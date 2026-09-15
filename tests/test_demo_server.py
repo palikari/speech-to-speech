@@ -451,3 +451,115 @@ if (!root.innerHTML.includes("signin-pill")) {
         capture_output=True,
         text=True,
     )
+
+
+# ── Web search: Ollama passages, Serper fallback, page fetch ─────────────────
+
+
+class _FakeOllamaClient:
+    """Fake httpx.AsyncClient for the ollama.com endpoints; records the request."""
+
+    calls: list = []
+
+    def __init__(self, **kwargs):
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        pass
+
+    async def post(self, url, headers=None, json=None):
+        _FakeOllamaClient.calls.append((url, headers, json))
+        if url.endswith("/web_search"):
+            return httpx.Response(
+                200,
+                json={
+                    "results": [
+                        {
+                            "title": "Chili",
+                            "url": "https://example.com/chili",
+                            "content": "Simmer  30 to 40\n minutes. " * 60,
+                        },
+                        {"title": "More", "url": "https://example.com/more", "content": "short"},
+                    ]
+                },
+            )
+        return httpx.Response(
+            200, json={"title": "Page", "content": "word " * 5000, "links": [f"https://l/{i}" for i in range(20)]}
+        )
+
+
+@pytest.mark.asyncio
+async def test_search_prefers_ollama_passages_when_its_key_is_configured(monkeypatch, caplog):
+    _FakeOllamaClient.calls = []
+    monkeypatch.setattr(demo_server, "OLLAMA_KEY", "secret-ollama-key")
+    monkeypatch.setattr(demo_server, "SERPER_KEY", "serper-key")
+    monkeypatch.setattr(demo_server.httpx, "AsyncClient", _FakeOllamaClient)
+
+    with caplog.at_level("INFO", logger="s2s.search"):
+        response = await demo_server.search(demo_server.SearchRequest(query="chili simmer time"))
+
+    body = json.loads(response.body)
+    assert body["provider"] == "ollama" and body["answer"] is None
+    assert [r["url"] for r in body["results"]] == ["https://example.com/chili", "https://example.com/more"]
+    passage = body["results"][0]["snippet"]
+    assert len(passage) == demo_server.PASSAGE_CHARS and "  " not in passage and "\n" not in passage
+    url, headers, payload = _FakeOllamaClient.calls[0]
+    assert url == demo_server.OLLAMA_SEARCH_URL and payload == {
+        "query": "chili simmer time",
+        "max_results": demo_server.MAX_RESULTS,
+    }
+    assert headers["Authorization"] == "Bearer secret-ollama-key"
+    assert "secret-ollama-key" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_search_uses_the_users_own_serper_key_over_ollama(monkeypatch):
+    class FakeSerper(_FakeOllamaClient):
+        async def post(self, url, headers=None, json=None):
+            _FakeOllamaClient.calls.append((url, headers, json))
+            return httpx.Response(200, json={"organic": [{"title": "T", "snippet": "S", "link": "https://x"}]})
+
+    _FakeOllamaClient.calls = []
+    monkeypatch.setattr(demo_server, "OLLAMA_KEY", "secret-ollama-key")
+    monkeypatch.setattr(demo_server.httpx, "AsyncClient", FakeSerper)
+
+    response = await demo_server.search(demo_server.SearchRequest(query="q", key="users-serper-key"))
+
+    body = json.loads(response.body)
+    assert body["provider"] == "serper" and body["results"] == [{"title": "T", "snippet": "S", "url": "https://x"}]
+    assert _FakeOllamaClient.calls[0][0] == demo_server.SERPER_URL
+    assert _FakeOllamaClient.calls[0][1]["X-API-KEY"] == "users-serper-key"
+
+
+@pytest.mark.asyncio
+async def test_fetch_reads_a_page_capped_and_only_over_http(monkeypatch):
+    _FakeOllamaClient.calls = []
+    monkeypatch.setattr(demo_server, "OLLAMA_KEY", "secret-ollama-key")
+    monkeypatch.setattr(demo_server.httpx, "AsyncClient", _FakeOllamaClient)
+
+    response = await demo_server.fetch_page(demo_server.FetchRequest(url="https://example.com/chili"))
+    body = json.loads(response.body)
+    assert body["title"] == "Page" and body["truncated"] is True
+    assert len(body["content"]) == demo_server.FETCH_CHARS and len(body["links"]) == 10
+
+    with pytest.raises(demo_server.HTTPException) as exc:
+        await demo_server.fetch_page(demo_server.FetchRequest(url="file:///etc/passwd"))
+    assert exc.value.status_code == 400
+
+    monkeypatch.setattr(demo_server, "OLLAMA_KEY", "")
+    with pytest.raises(demo_server.HTTPException) as exc:
+        await demo_server.fetch_page(demo_server.FetchRequest(url="https://example.com"))
+    assert exc.value.status_code == 503
+
+
+def test_config_reports_search_provider_and_fetch(monkeypatch):
+    monkeypatch.setattr(demo_server, "OLLAMA_KEY", "k")
+    monkeypatch.setattr(demo_server, "SERPER_KEY", "")
+    cfg = demo_server.config()
+    assert cfg["search"] is True and cfg["searchProvider"] == "ollama" and cfg["fetch"] is True
+    monkeypatch.setattr(demo_server, "OLLAMA_KEY", "")
+    cfg = demo_server.config()
+    assert cfg["search"] is False and cfg["searchProvider"] == "" and cfg["fetch"] is False

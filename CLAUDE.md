@@ -71,6 +71,12 @@ server, use `--responses_api_base_url https://ollama.com/v1` and pass a real
 key from an environment variable (`--responses_api_api_key "$OLLAMA_API_KEY"`),
 never on the command line or in chat.
 
+Web search for the model: with `OLLAMA_API_KEY` in the environment (Michael
+keeps it in `~/.zshrc`; never in the repo or in chat) the demo server's
+`/api/search` uses Ollama's web search (page passages, usage from the Ollama
+Pro allowance) and offers `/api/fetch` for whole pages; without it, Serper via
+`SERPER_API_KEY` or the user's own Serper key from Settings.
+
 Browser demo (port 7860), in a second terminal:
 
 ```bash
@@ -135,7 +141,7 @@ _Update at the end of a session that changed something._
   model / Warming up the voice; 25 s fail-safe), and assistant bubbles now
   stay while speaker output is audible (client emits `output-level`; chat
   view bumps the bubble's expiry, fades 3 s after the last word). Assets are
-  cache-busted with `?v=audio-24k-v30` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
+  cache-busted with `?v=audio-24k-v31` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
   editing demo JS/CSS or browsers keep the old files.
 - 2026-09-14 (tools): the LLM handler now parses the model's native
   `<tool_call><function=…><parameter=…>` XML blocks as well as the prompted
@@ -351,6 +357,20 @@ _Update at the end of a session that changed something._
   requesting the greeting; a user turn during the wait abandons the
   greeting (their turn gets the new persona's reply anyway). Page-only,
   checked by reading; Michael's browser is the test.
+- 2026-09-15 (Ollama web search): the Serper tool gave the model one
+  150-char snippet per result, so answers came from teasers. `/api/search`
+  now prefers Ollama's `web_search` when `OLLAMA_API_KEY` is set (5 results,
+  each a 700-char passage of the page, `PASSAGE_CHARS`), and a new
+  `/api/fetch` (`web_fetch` tool, page text capped at `FETCH_CHARS` 8000,
+  http(s) only) lets the model read a page when the passages are not
+  enough. `/api/config` reports `searchProvider` and `fetch`; the page adds
+  the `web_fetch` tool only when the server can fetch. Ollama's endpoints
+  live on ollama.com (the local server does not proxy them; 404) and need
+  the account key. Measured: search 0.6-0.7 s, ~1000-1300 prompt tokens;
+  fetch 0.8 s, ~2000 tokens; GLM answers correctly where snippets failed
+  (chili simmer time came from the fetched recipe page). Tests in
+  `tests/test_demo_server.py` fake the ollama.com client and assert the key
+  is sent only as the Authorization header and never logged.
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache
