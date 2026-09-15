@@ -17,9 +17,9 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v27";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v28";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v27";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v28";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -546,7 +546,7 @@ function applyPersona(id, reason) {
   setPersonaMode("preset");
   chat.setAssistantName(persona.name);
   if (client && LIVE_STATES.has(currentState)) {
-    client.updateSession({ voice: persona.voice, instructions: persona.instructions });
+    lastSessionUpdate = client.updateSession({ voice: persona.voice, instructions: persona.instructions });
   }
   renderWakeToggle();
   sendWakeConfig();
@@ -616,6 +616,22 @@ let wakeConfigSent = false;
 let replyAfterResponse = false;
 /** The model called switch_persona during the response now in flight. */
 let switchedThisResponse = false;
+/** The assistant has spoken something in the response now in flight (a silent tool call has not). */
+let spokenThisResponse = false;
+/** Hand-off held back because the model called switch_persona without a goodbye; applied when its reply ends. */
+let heldPersona = /** @type {string | null} */ (null);
+/** Responses that ended while a hand-off was held; the second one applies it whatever it contained. */
+let heldResponses = 0;
+/** The last session update sent; a response that must use it is requested after this settles. */
+let lastSessionUpdate = /** @type {Promise<void> | null} */ (null);
+
+/** Switch persona, then have the new persona answer once the session update has reached the server. */
+function switchAndReply(c, id, reason) {
+  if (id !== currentPersonaId()) applyPersona(id, reason);
+  void Promise.resolve(lastSessionUpdate).then(() => {
+    if (client === c && LIVE_STATES.has(currentState)) c.requestResponse();
+  });
+}
 /** Hand-off the assistant promised in words but did not perform; applied when the reply ends. */
 let promisedPersona = /** @type {string | null} */ (null);
 /** Hand-off the assistant offered; applied if the user's next turn is a yes. */
@@ -1170,7 +1186,15 @@ async function runTool(name, argsJson, callId) {
       switchedThisResponse = true;
       promisedPersona = null;
       offeredPersona = null;
-      if (id && applyPersona(id, "inferred")) {
+      if (id && !spokenThisResponse && !heldPersona && id !== currentPersonaId()) {
+        // A silent switch: nothing was said before the call, so the next
+        // persona would answer with no farewell at all. Hold the switch, ask
+        // for the goodbye now, and apply it when that reply ends.
+        heldPersona = id;
+        heldResponses = 0;
+        console.log(`[persona] hold → ${PERSONAS[id].name} · goodbye first`);
+        result.output = `Not switched yet. First say a one-line goodbye in your own voice, now, in this reply. The switch to ${PERSONAS[id].label} happens by itself when this reply ends; do not call switch_persona again.`;
+      } else if (id && applyPersona(id, "inferred")) {
         result.output = `Switched to ${PERSONAS[id].label}. From now on you are that persona: reply in character, in their voice, and greet the user briefly.`;
       } else {
         result.output = `Unknown persona ${JSON.stringify(args.persona)}. Available: ${Object.keys(PERSONAS).join(", ")}.`;
@@ -1761,6 +1785,9 @@ async function doStart(audioContext = null) {
   wakeConfigSent = false;
   replyAfterResponse = false;
   switchedThisResponse = false;
+  spokenThisResponse = false;
+  heldPersona = null;
+  heldResponses = 0;
   promisedPersona = null;
   offeredPersona = null;
   setState("connecting");
@@ -1850,6 +1877,7 @@ async function doStart(audioContext = null) {
       // its voice, which can differ from the current persona right after a switch.
       const spoken = d.voice && Object.values(PERSONAS).find((p) => p.voice === d.voice);
       d.speaker = spoken ? spoken.name : undefined;
+      if (d.text && d.text.trim()) spokenThisResponse = true;
     }
     chat.onTranscript(d);
     if (d.role === "user" && !d.partial && offeredPersona) {
@@ -1875,15 +1903,20 @@ async function doStart(audioContext = null) {
       // first, that wins and the pending request is dropped.
       const wanted = personaRequestedIn(d.text);
       if (wanted && wanted !== currentPersonaId()) {
-        // Safe to switch right away: the server stamps each response with the
-        // voice and prompt it started with, so a reply already in flight (the
-        // current persona's farewell) keeps its voice; the next one is the
-        // new persona's.
-        applyPersona(wanted, wakeEnabled ? "addressed" : "named");
         if (wakeEnabled) {
           // In wake mode the server does not answer a turn addressed to
-          // another persona; ask for the reply once that empty response ends.
+          // another persona, so switch now and ask for the reply once that
+          // empty response ends.
+          applyPersona(wanted, "addressed");
           replyAfterResponse = true;
+        } else {
+          // Let the current persona answer this turn first: it says goodbye
+          // and calls switch_persona itself. Switching before its reply has
+          // started would make the model answer as the new persona, with
+          // nobody left to say goodbye. Applied when the reply ends if the
+          // model did not switch on its own.
+          pendingPersona = wanted;
+          console.log(`[persona] pending → ${PERSONAS[wanted].name} · asked by name`);
         }
       }
     }
@@ -1910,20 +1943,42 @@ async function doStart(audioContext = null) {
   c.addEventListener("response-finished", (e) => {
     const detail = /** @type {CustomEvent<{ responseId: string; status: string; audible?: boolean; transcript?: string }>} */ (e).detail;
     chat.onResponseFinished(detail);
-    if (pendingPersona) {
+    const spoke = detail.audible || !!(detail.transcript && detail.transcript.trim());
+    if (heldPersona) {
+      // The tool-call response itself ends silently first; the goodbye is the
+      // follow-up. Apply after the goodbye, or after two responses regardless.
+      heldResponses += 1;
+      if (spoke || heldResponses >= 2 || detail.status === "cancelled") {
+        const held = heldPersona;
+        heldPersona = null;
+        heldResponses = 0;
+        promisedPersona = null;
+        offeredPersona = null;
+        switchedThisResponse = false;
+        spokenThisResponse = false;
+        if (detail.status === "cancelled") {
+          // The user talked over the goodbye; they still asked for the switch,
+          // and their new turn gets the new persona's reply on its own.
+          if (held !== currentPersonaId()) applyPersona(held, "inferred");
+        } else {
+          switchAndReply(c, held, "inferred");
+        }
+        return;
+      }
+    } else if (pendingPersona) {
       const wanted = pendingPersona;
       pendingPersona = null;
-      if (wanted !== currentPersonaId()) applyPersona(wanted);
+      if (wanted !== currentPersonaId()) switchAndReply(c, wanted, "named");
+    } else if (promisedPersona && !switchedThisResponse && promisedPersona !== currentPersonaId()) {
+      switchAndReply(c, promisedPersona, "promised");
     }
     if (replyAfterResponse) {
       replyAfterResponse = false;
       if (client === c) c.requestResponse();
     }
-    if (promisedPersona && !switchedThisResponse && promisedPersona !== currentPersonaId()) {
-      applyPersona(promisedPersona, "promised");
-    }
     promisedPersona = null;
     switchedThisResponse = false;
+    spokenThisResponse = false;
   });
   c.addEventListener("error", (e) => {
     const detail = /** @type {CustomEvent<{ error: unknown }>} */ (e).detail;

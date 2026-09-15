@@ -49,7 +49,7 @@ import { OrbVisualiser, VIS_FFT_SIZE } from "./ws/orb-visualizer.js";
 import { SentAudioRecorder } from "./ws/user-audio-recorder.js";
 
 export const AUDIO_SAMPLE_RATE = 24_000;
-export const AUDIO_WORKLET_VERSION = "audio-24k-v27";
+export const AUDIO_WORKLET_VERSION = "audio-24k-v28";
 const MIC_CHUNK_MS = 40;
 const CAPTURE_CONFIG_TIMEOUT_MS = 2_000;
 const SPEAKING_OPEN_DB = -50;
@@ -611,13 +611,15 @@ export class S2sRealtimeClient extends EventTarget {
     this._setStatus("ai-speaking");
   }
 
-  /** @param {{voice?: string, instructions?: string}} patch */
+  /** Update voice and/or instructions. Resolves once the explicit session.update
+   *  has been sent, so a caller can request a response that must use them.
+   *  @param {{voice?: string, instructions?: string}} patch @returns {Promise<void>} */
   updateSession(patch) {
     if (patch.voice !== undefined) this.options.voice = patch.voice;
     if (patch.instructions !== undefined) this.options.instructions = patch.instructions;
-    if (!this._session) return;
+    if (!this._session) return Promise.resolve();
     this._agent = this._buildAgent();
-    void this._session.updateAgent(this._agent).then(() => {
+    return this._session.updateAgent(this._agent).then(() => {
       // Belt and braces: the SDK's agent update was observed to change the
       // voice but leave the server's instructions untouched. Send the pair
       // explicitly through the stock transport hook; the server deep-merges.

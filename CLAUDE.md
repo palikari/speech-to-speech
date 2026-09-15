@@ -135,7 +135,7 @@ _Update at the end of a session that changed something._
   model / Warming up the voice; 25 s fail-safe), and assistant bubbles now
   stay while speaker output is audible (client emits `output-level`; chat
   view bumps the bubble's expiry, fades 3 s after the last word). Assets are
-  cache-busted with `?v=audio-24k-v27` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
+  cache-busted with `?v=audio-24k-v28` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
   editing demo JS/CSS or browsers keep the old files.
 - 2026-09-14 (tools): the LLM handler now parses the model's native
   `<tool_call><function=…><parameter=…>` XML blocks as well as the prompted
@@ -304,6 +304,28 @@ _Update at the end of a session that changed something._
   cancelled reply are still discarded, failed/incomplete replies are still
   rolled back whole. Probe (Karloff recipe, cancel, "Stop."): 3/3
   acknowledged and dropped the recipe, versus 0/3 before.
+- 2026-09-14 (hand-offs lost their goodbye on the cloud LLM): two causes
+  in the browser logs. (1) The page's phrase detector switched the session
+  before the model's reply had started (0.7 s ahead with the fast LLM), so
+  the model answered as the new persona with nobody left to say goodbye; the
+  earlier "switch right away, stamping protects the farewell" reasoning only
+  holds for a reply already in flight. Outside wake mode the page now sets
+  `pendingPersona` and lets the current persona answer (it calls
+  switch_persona itself, with a goodbye, ~15/16 directly); if the model did
+  not switch, the switch is applied when the reply ends and the new persona
+  is asked to reply. Wake mode keeps the immediate switch (the server
+  declines the turn anyway). (2) GLM occasionally makes the switch_persona
+  call with no spoken text (3/3 in the browser, 1/16 directly). The page now
+  holds such a switch: the tool result asks for a one-line goodbye now and
+  says the switch happens when that reply ends (`heldPersona`; model obeys
+  8/8, no second call); after the goodbye the page applies the persona and
+  requests the greeting. `switchAndReply` waits for `client.updateSession`'s
+  promise (now returned) before `requestResponse`, so the greeting cannot
+  race the session update. Promised hand-offs now also get a greeting.
+  Pipeline flow verified with a scripted browser role (villain goodbye in
+  the villain voice, captain greeting in the captain voice); the page state
+  machine itself is not unit-tested and was checked by reading, so watch
+  the console (`[persona] hold`, `[persona] pending`) on the first tries.
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache
