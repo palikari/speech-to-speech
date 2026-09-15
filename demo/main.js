@@ -17,11 +17,11 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v52";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v53";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v52";
-import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v52";
-import { Ambience } from "./ui/ambience.js?v=audio-24k-v52";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v53";
+import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v53";
+import { Ambience } from "./ui/ambience.js?v=audio-24k-v53";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -480,17 +480,23 @@ const ambienceMeterLabel = /** @type {HTMLElement} */ ($("#ambience-meter-label"
 const ambienceBars = /** @type {HTMLElement[]} */ ([...ambienceMeter.querySelectorAll("i")]);
 let meterFrame = 0;
 let meterSmoothed = 0;
+let meterPeak = 0;
 function tickAmbienceMeter() {
   meterFrame = 0;
   const playing = ambience.isPlaying() && ambienceSettings.on;
-  if (!playing) { ambienceMeter.hidden = true; return; }
+  if (!playing) { ambienceMeter.hidden = true; meterPeak = 0; return; }
   ambienceMeter.hidden = false;
-  const level = Math.min(1, ambience.level() * 6); // beds sit around 0.05-0.15 rms; scale up
-  meterSmoothed += (level - meterSmoothed) * 0.25;
+  // Normalise against the bed's own recent peak: a quiet bed at a low volume
+  // still reads as "full" at rest, and ducking (a third of the level) shows as
+  // the bars dropping. The peak decays slowly so a change of bed re-adapts.
+  const raw = ambience.level();
+  meterPeak = Math.max(raw, meterPeak * 0.9995, 1e-4);
+  const level = Math.min(1, Math.sqrt(raw / meterPeak));
+  meterSmoothed += (level - meterSmoothed) * 0.2;
   const t = performance.now() / 1000;
   ambienceBars.forEach((bar, i) => {
     const wobble = 0.75 + 0.25 * Math.sin(t * (2.1 + i * 0.7) + i);
-    bar.style.transform = `scaleY(${Math.max(0.12, meterSmoothed * wobble)})`;
+    bar.style.transform = `scaleY(${Math.max(0.1, meterSmoothed * wobble)})`;
   });
   meterFrame = requestAnimationFrame(tickAmbienceMeter);
 }
