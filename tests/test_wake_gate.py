@@ -181,7 +181,57 @@ def test_tool_follow_ups_are_not_gated():
         )
     )
     cfg.chat.add_item(
-        RealtimeConversationItemFunctionCallOutput(type="function_call_output", call_id="call_1", output="Standby is on.")
+        RealtimeConversationItemFunctionCallOutput(
+            type="function_call_output", call_id="call_1", output="Standby is on."
+        )
     )
     decision = gate_turn(cfg)
     assert decision.answer is True and decision.reason == "tool follow-up"  # the acknowledgement goes through
+
+
+def test_a_standby_tool_call_closes_the_window_whatever_the_user_said():
+    from openai.types.realtime.conversation_item import (
+        RealtimeConversationItemFunctionCall,
+        RealtimeConversationItemFunctionCallOutput,
+    )
+    from openai.types.realtime.realtime_conversation_item_user_message import (
+        Content as UserContent,
+    )
+    from openai.types.realtime.realtime_conversation_item_user_message import (
+        RealtimeConversationItemUserMessage,
+    )
+
+    from speech_to_speech.api.openai_realtime.runtime_config import RuntimeConfig
+    from speech_to_speech.LLM.wake_gate import extend_awake_window, gate_turn
+
+    cfg = RuntimeConfig()
+    cfg.apply_session_update(
+        RealtimeSessionCreateRequest.model_validate(
+            {"type": "realtime", "s2s_wake": {"enabled": True, "words": ["sam"]}}
+        )
+    )
+    cfg.chat.add_item(
+        RealtimeConversationItemUserMessage(
+            type="message", role="user", content=[UserContent(type="input_text", text="Sam, only answer to your name.")]
+        )
+    )
+    cfg.chat.add_item(
+        RealtimeConversationItemFunctionCall(
+            type="function_call", call_id="call_2", name="set_listening", arguments='{"mode":"standby"}'
+        )
+    )
+    cfg.chat.add_item(
+        RealtimeConversationItemFunctionCallOutput(
+            type="function_call_output", call_id="call_2", output="Standby is on."
+        )
+    )
+    extend_awake_window(cfg)  # after the acknowledgement reply
+    assert cfg.wake_awake_until == 0
+    cfg.chat.add_item(
+        RealtimeConversationItemUserMessage(
+            type="message",
+            role="user",
+            content=[UserContent(type="input_text", text="Testing, testing, one two three.")],
+        )
+    )
+    assert gate_turn(cfg).answer is False

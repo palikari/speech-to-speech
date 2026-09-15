@@ -175,10 +175,28 @@ def extend_awake_window(runtime_config: Any) -> None:
     cfg = parse_wake_config(runtime_config.session)
     if cfg is None or not cfg.enabled:
         return
-    if is_sleep_phrase(last_user_text(runtime_config), cfg.sleep_phrases):
+    if is_sleep_phrase(last_user_text(runtime_config), cfg.sleep_phrases) or turn_put_assistant_to_sleep(
+        runtime_config
+    ):
         runtime_config.wake_awake_until = 0.0
         return
     runtime_config.wake_awake_until = time.monotonic() + cfg.window_s
+
+
+def turn_put_assistant_to_sleep(runtime_config: Any) -> bool:
+    """True when this user turn led to a set_listening call for standby or muted.
+
+    Phrasing-independent: "only answer to your name" is not a sleep phrase, but
+    the tool call it produced is in the history right after the user message.
+    """
+    for item in reversed(list(runtime_config.chat.buffer)):
+        if getattr(item, "role", None) == "user":
+            return False
+        if getattr(item, "type", None) == "function_call" and getattr(item, "name", None) == "set_listening":
+            args = str(getattr(item, "arguments", "") or "").lower()
+            if "standby" in args or "muted" in args:
+                return True
+    return False
 
 
 def drop_last_user_turn(runtime_config: Any) -> Optional[str]:

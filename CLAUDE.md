@@ -148,7 +148,7 @@ _Update at the end of a session that changed something._
   model / Warming up the voice; 25 s fail-safe), and assistant bubbles now
   stay while speaker output is audible (client emits `output-level`; chat
   view bumps the bubble's expiry, fades 3 s after the last word). Assets are
-  cache-busted with `?v=audio-24k-v40` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
+  cache-busted with `?v=audio-24k-v41` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
   editing demo JS/CSS or browsers keep the old files.
 - 2026-09-14 (tools): the LLM handler now parses the model's native
   `<tool_call><function=…><parameter=…>` XML blocks as well as the prompted
@@ -489,7 +489,14 @@ _Update at the end of a session that changed something._
   turn "Not addressed" (dimmed) in the bubble and the history. Orb label
   now reads "Standby · say "Sam" to wake" / "Listening · answers everything".
   Default per device: standby on a shared device, normal at the desk (the
-  toggle is persisted per browser).
+  toggle is persisted per browser). Michael's first test: "only answer to
+  your name" is not a sleep phrase, so the acknowledgement reopened the
+  window and the next lines were answered with "..."; now any
+  `set_listening` standby/muted call in the turn closes the window
+  (`turn_put_assistant_to_sleep`). After a spoken mute the model kept
+  believing the mic was off; lifting a hard mute now sends a user-role note
+  that the mic is on again, and the tool results say the server enforces
+  standby so the model should answer whatever it receives.
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache

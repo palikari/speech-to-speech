@@ -17,10 +17,10 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v40";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v41";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v40";
-import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v40";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v41";
+import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v41";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -1665,7 +1665,7 @@ function applyListeningMode(mode) {
   if (mode === "standby") {
     setWakeEnabled(true);
     console.log("[listening] standby");
-    return `Standby is on: ${who} now answers only when addressed by name (${wakeWordsFor(current ?? "").join(", ") || "its name"}), and for a short while after each reply. Confirm in a few words.`;
+    return `Standby is on: ${who} now answers only when addressed by name (${wakeWordsFor(current ?? "").join(", ") || "its name"}), and for a short while after each reply. The server enforces this: turns that are not for you never reach you, so answer every turn you do receive normally and never reply with silence or dots. Confirm in a few words.`;
   }
   if (mode === "normal") {
     setWakeEnabled(false);
@@ -1676,7 +1676,7 @@ function applyListeningMode(mode) {
     const ok = hardMute(HARD_MUTE_CAPTION);
     console.log("[listening] muted", ok);
     return ok
-      ? "The microphone is now off. The user must tap the mic button to unmute; they cannot wake you by voice. Say goodbye briefly and mention the mic button."
+      ? "The microphone is now off. The user must tap the mic button to unmute; they cannot wake you by voice. Say goodbye briefly and mention the mic button. You will be told when the microphone is on again; until then you will simply receive nothing, so if you do receive a turn, the mic is on and you should answer it normally."
       : "Could not mute: no live microphone.";
   }
   return mode
@@ -2090,6 +2090,9 @@ micBtn.addEventListener("click", () => {
     hardMuted = false;
     hardMuteCaption = "";
     setCaption(STATE_VIEWS[currentState]?.caption ?? "", "");
+    // The model was told the mic was off; tell it the user switched it back on,
+    // otherwise it keeps insisting it cannot hear them.
+    client?.sendUserNote("(Note, not spoken by the user: they tapped the mic button. The microphone is on again and you can hear them normally.)");
   }
 });
 
