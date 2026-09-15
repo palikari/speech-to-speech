@@ -17,9 +17,9 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v29";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v30";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v29";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v30";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -624,6 +624,30 @@ let heldPersona = /** @type {string | null} */ (null);
 let heldResponses = 0;
 /** The last session update sent; a response that must use it is requested after this settles. */
 let lastSessionUpdate = /** @type {Promise<void> | null} */ (null);
+/** Quiet time after the goodbye finishes playing before the next persona is asked to speak. */
+const HANDOFF_PAUSE_MS = 700;
+/** Stop waiting for the speaker to go quiet after this long (a stuck level meter must not block the hand-off). */
+const HANDOFF_PAUSE_MAX_MS = 8000;
+/** When the speaker output was last audible (from the client's output-level events). */
+let lastOutputAudibleAt = 0;
+/** Bumped to abandon a hand-off greeting that is still waiting for the goodbye to finish. */
+let handoffWaitToken = 0;
+
+/** Resolve true once the speaker has been quiet for HANDOFF_PAUSE_MS (capped), false if the wait was abandoned. */
+function waitForQuietOutput(c) {
+  const token = ++handoffWaitToken;
+  const started = performance.now();
+  return new Promise((resolve) => {
+    const tick = () => {
+      if (token !== handoffWaitToken || client !== c) return resolve(false);
+      const now = performance.now();
+      const quietFor = now - Math.max(lastOutputAudibleAt, started);
+      if (quietFor >= HANDOFF_PAUSE_MS || now - started >= HANDOFF_PAUSE_MAX_MS) return resolve(true);
+      window.setTimeout(tick, 100);
+    };
+    tick();
+  });
+}
 
 /** Switch persona, then have the new persona answer once the session update has reached the server.
  *  The greeting carries a one-off note: without it the model, seeing only the
@@ -641,11 +665,16 @@ function switchAndReply(c, id, reason) {
   const handoffNote = "(Hand-off note, not spoken by the user: the previous persona has said its goodbye; that farewell was"
     + ` theirs. You are ${persona.name} now, and the user is waiting for your greeting. Greet them briefly in your own`
     + " character, then help them.)";
-  void Promise.resolve(lastSessionUpdate).then(() => {
-    if (client !== c || !LIVE_STATES.has(currentState)) return;
-    c.sendUserNote(handoffNote);
-    c.requestResponse({ instructions: persona.instructions + note });
-  });
+  // Let the goodbye finish playing, then a beat of silence, before the next
+  // persona speaks; the server is done well before the browser has played
+  // the audio, so response-finished alone runs the two together.
+  void Promise.resolve(lastSessionUpdate)
+    .then(() => waitForQuietOutput(c))
+    .then((go) => {
+      if (!go || client !== c || !LIVE_STATES.has(currentState)) return;
+      c.sendUserNote(handoffNote);
+      c.requestResponse({ instructions: persona.instructions + note });
+    });
 }
 /** Hand-off the assistant promised in words but did not perform; applied when the reply ends. */
 let promisedPersona = /** @type {string | null} */ (null);
@@ -1803,6 +1832,8 @@ async function doStart(audioContext = null) {
   spokenThisResponse = false;
   heldPersona = null;
   heldResponses = 0;
+  handoffWaitToken += 1;
+  lastOutputAudibleAt = 0;
   promisedPersona = null;
   offeredPersona = null;
   setState("connecting");
@@ -1939,11 +1970,15 @@ async function doStart(audioContext = null) {
   c.addEventListener("output-level", (e) => {
     const { audible } = /** @type {CustomEvent<{ rms: number; audible: boolean }>} */ (e).detail;
     if (!audible) return;
+    lastOutputAudibleAt = performance.now();
     if (warmingUp) endWarmup("first-audio");
     chat.onAssistantAudible();
   });
   c.addEventListener("user-turn-started", (e) => {
     const detail = /** @type {CustomEvent<{ itemId?: string }>} */ (e).detail;
+    // The user spoke during a hand-off pause: their turn gets the new persona's
+    // reply on its own, so drop the greeting that was waiting.
+    handoffWaitToken += 1;
     chat.onUserTurnStarted(detail);
   });
   c.addEventListener("user-turn-stopped", (e) => {
