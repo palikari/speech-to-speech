@@ -117,7 +117,7 @@ _Update at the end of a session that changed something._
   model / Warming up the voice; 25 s fail-safe), and assistant bubbles now
   stay while speaker output is audible (client emits `output-level`; chat
   view bumps the bubble's expiry, fades 3 s after the last word). Assets are
-  cache-busted with `?v=audio-24k-v24` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
+  cache-busted with `?v=audio-24k-v25` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
   editing demo JS/CSS or browsers keep the old files.
 - 2026-09-14 (tools): the LLM handler now parses the model's native
   `<tool_call><function=…><parameter=…>` XML blocks as well as the prompted
@@ -232,6 +232,14 @@ _Update at the end of a session that changed something._
   streamed and spoken), emits `</think>`, then restates the answer. The
   handler now drops a stray closing tag and suppresses the restatement
   while it matches what was already emitted (`_suppress_restatement`).
+- 2026-09-14 (nicknames): the model infers personas from nicknames on its
+  own ("that utter madman" -> Karloff, "Hecate's acolyte" -> Esmerelda, "the
+  old sea dog" -> Barnaby; "the tin can" was not understood). Repeatable check
+  against a live server: `scripts/probe_persona_intent.py` (needs the
+  session slot free). The page's own phrase detector is unit-tested in
+  `demo/tests/persona-phrases.test.mjs` (wrapped by pytest); it only knows
+  names, roles and two nicknames (madman, sorceress); everything else is the
+  model's job.
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache

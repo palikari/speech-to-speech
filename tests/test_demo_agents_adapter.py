@@ -159,9 +159,9 @@ const good = await setupAudio({
   kind: "capture-config",
   inputRate: 48000,
   outputRate: 24000,
-  version: "audio-24k-v24",
+  version: "audio-24k-v25",
 });
-if (good.modules.length !== 2 || good.modules.some((url) => !url.endsWith("?v=audio-24k-v24"))) {
+if (good.modules.length !== 2 || good.modules.some((url) => !url.endsWith("?v=audio-24k-v25"))) {
   throw new Error(`audio worklets were not versioned: ${JSON.stringify(good.modules)}`);
 }
 const capture = good.nodes.find((node) => node.name === "mic-capture");
@@ -374,4 +374,18 @@ if (error?.code !== "login-required" || error?.loginUrl !== "/login") {
   throw new Error(`lost login detail: ${JSON.stringify(error)}`);
 }
 """
+    )
+
+
+def test_persona_phrase_detector():
+    """The page's persona phrase detector (demo/tests/persona-phrases.test.mjs)."""
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    subprocess.run(
+        [node, "--test", "tests/persona-phrases.test.mjs"],
+        cwd=REPO_ROOT / "demo",
+        check=True,
+        capture_output=True,
+        text=True,
     )

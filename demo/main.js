@@ -17,9 +17,9 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v24";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v25";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v24";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v25";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -67,7 +67,7 @@ const PERSONAS = /** @type {Record<string, { name: string; label: string; voice:
     name: "Karloff",
     label: "Mad scientist (Professor Karloff)",
     voice: "villain",
-    aliases: ["karloff", "professor", "mad scientist", "villain"],
+    aliases: ["karloff", "professor", "mad scientist", "madman", "villain"],
     instructions:
       "You are Professor Karloff, a grand, old-fashioned theatrical villain: a mad scientist with a silky, "
       + "sardonic delivery. Purr with mock politeness, savour your own wickedness, and slip into "
@@ -104,7 +104,7 @@ const PERSONAS = /** @type {Record<string, { name: string; label: string; voice:
     name: "Esmerelda",
     label: "Witch (Esmerelda)",
     voice: "witch",
-    aliases: ["esmerelda", "esmeralda", "esmer", "witch"],
+    aliases: ["esmerelda", "esmeralda", "esmer", "sorceress", "witch"],
     instructions:
       "You are Esmerelda, a gleeful old witch of the woods: sly, mischievous, delighted by your own cleverness, "
       + "and fond of a wicked little cackle. Call people 'dearie', mention your cauldron, your cat or "
@@ -474,7 +474,7 @@ function resolvePersona(query) {
  *  "switch to the professor", "I want to speak to Esmerelda", "get me Barnaby",
  *  or a direct address at the start, "Esmerelda, what's brewing?". */
 const PERSONA_REQUEST_RE =
-  /\b(?:switch(?: me)?(?: over)? to|talk to|talk with|speak (?:to|with)|chat with|get me|give me|bring (?:me|in|out|back)|put on|(?:i(?:'d| would)? like|i want|let me|can i|could i|may i)(?: to)? (?:talk|speak|chat)(?: to| with)?|wake up|hand (?:me )?over to)\s+(?:the\s+)?([a-z][a-z' ]{2,32})/i;
+  /\b(?:switch(?: me)?(?: over)? to|talk to|talk with|speak (?:to|with)|chat with|get me|give me|bring (?:me|in|out|back)|put on|put me through to|connect me (?:to|with)|pass me (?:to|over to)|a word with|(?:i(?:'d| would)? like|i want|let me|can i|could i|may i)(?: to)? (?:talk|speak|chat)(?: to| with)?|wake up|hand (?:me )?over to)\s+(?:the\s+)?([a-z][a-z' ]{2,32})/i;
 const PERSONA_ADDRESS_RE = /^\s*(?:hey|hi|hello|ok|okay|yo)?[\s,]*([a-z][a-z' ]{2,24}?)[,!?.:]/i;
 
 /** @param {string} transcript @returns {string | null} persona id the user asked for */
