@@ -148,7 +148,7 @@ _Update at the end of a session that changed something._
   model / Warming up the voice; 25 s fail-safe), and assistant bubbles now
   stay while speaker output is audible (client emits `output-level`; chat
   view bumps the bubble's expiry, fades 3 s after the last word). Assets are
-  cache-busted with `?v=audio-24k-v59` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
+  cache-busted with `?v=audio-24k-v60` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
   editing demo JS/CSS or browsers keep the old files.
 - 2026-09-14 (tools): the LLM handler now parses the model's native
   `<tool_call><function=…><parameter=…>` XML blocks as well as the prompted
@@ -628,6 +628,19 @@ _Update at the end of a session that changed something._
   a bed plays. Tapping it opens a small panel (switch + 0-100 volume slider,
   saved as it moves, mirrored with the Settings > Tools controls; outside
   click or Escape closes it). Hidden under 600 px like before.
+- 2026-09-15 (spoken deliberation): Esmerelda opened a reply with
+  "(play_sound not needed here, a request, so speak)" and the pipeline
+  spoke it: GLM at minimal reasoning effort sometimes deliberates in the
+  content. Two layers: the persona prompt now says everything written is
+  spoken verbatim, so no notes-to-self or remarks about tools, and the
+  play_sound description says to decide silently; and `LLM/asides.py`
+  `LeadingAsideFilter`, in both LLM handlers, holds a reply only while it
+  opens with "(" and drops the parenthetical once it closes if it names a
+  tool (a snake_case identifier or the word "tool"), releasing anything
+  else verbatim ("(cackles) ..." survives). Ordinary replies are never
+  buffered; an aside over 240 chars or containing a newline is released.
+  Tests: `tests/test_asides.py`, two chat-completions streaming tests. The
+  raw content still goes into the history as the model wrote it.
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache

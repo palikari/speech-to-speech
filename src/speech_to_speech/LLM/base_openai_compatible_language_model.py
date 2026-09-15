@@ -29,6 +29,7 @@ from openai.types.responses import ResponseFunctionToolCall
 from pydantic import BaseModel, ConfigDict, Field
 
 from speech_to_speech.baseHandler import BaseHandler
+from speech_to_speech.LLM.asides import LeadingAsideFilter
 from speech_to_speech.LLM.chat import (
     Chat,
     ChatItemError,
@@ -603,6 +604,7 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
         cancelled = False
         printable_text = ""
         sentence_batch: list[str] = []
+        aside = LeadingAsideFilter()  # a note the model wrote to itself before answering
 
         def _flush(batch: list[str]) -> Iterator[LLMOut]:
             if not batch:
@@ -631,6 +633,10 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
                 )
             elif isinstance(event, ToolCall):
                 # Flush any pending spoken text before emitting the tool call.
+                held = aside.flush()
+                if held:
+                    state.clean_text += held
+                    printable_text += held
                 if printable_text.strip():
                     sentence_batch.append(remove_markdown(printable_text.strip()))
                     printable_text = ""
@@ -643,20 +649,22 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
                     sentence_batch = []
                 yield from self._record_tool_call(state, turn, event.item)
             elif isinstance(event, TextDelta):
+                delta_text = aside.feed(event.text)
+                if not delta_text:
+                    continue
                 if not turn.wants_audio:
                     # Text-only: forward verbatim. Keep every character (no
                     # remove_unspeechable, which strips TTS-unfriendly symbols) and
                     # don't sentence-split (sent_tokenize collapses newlines/markdown).
-                    state.clean_text += event.text
-                    if event.text:
-                        if not self._turn_output_allowed(turn.turn_id, turn.turn_revision):
-                            logger.info("LLM generation cancelled (stale speculative turn)")
-                            cancelled = True
-                            break
-                        state.output_emitted = True
-                        yield self._chunk(turn, text=event.text)
+                    state.clean_text += delta_text
+                    if not self._turn_output_allowed(turn.turn_id, turn.turn_revision):
+                        logger.info("LLM generation cancelled (stale speculative turn)")
+                        cancelled = True
+                        break
+                    state.output_emitted = True
+                    yield self._chunk(turn, text=delta_text)
                     continue
-                new_text = remove_unspeechable(event.text)
+                new_text = remove_unspeechable(delta_text)
                 state.clean_text += new_text
                 printable_text += new_text
                 trailing_whitespace = printable_text[len(printable_text.rstrip()) :]
@@ -676,6 +684,10 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
                     printable_text = sentences[-1] + trailing_whitespace
 
         if not cancelled:
+            held = aside.flush()
+            if held:
+                state.clean_text += held
+                printable_text += held
             if printable_text.strip():
                 sentence_batch.append(remove_markdown(printable_text.strip()))
             if sentence_batch:
@@ -718,7 +730,9 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
                 # Text-only keeps every character verbatim; audio strips markdown
                 # and TTS-unfriendly symbols. Not per-delta here: each TextDelta
                 # in the non-streaming path already carries the full response.
-                spoken = event.text if not turn.wants_audio else remove_markdown(remove_unspeechable(event.text))
+                aside = LeadingAsideFilter()
+                full_text = aside.feed(event.text) + aside.flush()
+                spoken = full_text if not turn.wants_audio else remove_markdown(remove_unspeechable(full_text))
                 state.clean_text += spoken
                 out = spoken if not turn.wants_audio else spoken.strip()
                 if (

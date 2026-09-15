@@ -34,6 +34,7 @@ from transformers import (
 
 from speech_to_speech.api.openai_realtime.runtime_config import RuntimeConfig
 from speech_to_speech.baseHandler import BaseHandler
+from speech_to_speech.LLM.asides import LeadingAsideFilter
 from speech_to_speech.LLM.chat import (
     Chat,
     ChatItemError,
@@ -176,6 +177,9 @@ class StreamContext(BaseModel):
     voice: Optional[str] = None  # session voice when the response started
     input_tokens: int = 0
     sentence_batch: list[str] = Field(default_factory=list)
+    # A note the model wrote to itself before answering, e.g. "(play_sound not
+    # needed here) ...": dropped before it is spoken.
+    aside: LeadingAsideFilter = Field(default_factory=LeadingAsideFilter)
     turn_id: str | None = None
     turn_revision: int | None = None
     speech_stopped_at_s: float | None = None
@@ -665,6 +669,7 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
             ctx.raw_generated_text += raw_text
             raw_text = self._strip_think(ctx, raw_text)
             raw_text = self._suppress_restatement(ctx, raw_text)
+            raw_text = ctx.aside.feed(raw_text)
             if not raw_text:
                 continue
             clean = raw_text if not wants_audio else remove_unspeechable(raw_text)
@@ -684,7 +689,7 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
                 break
             yield from chunks
 
-        tail = self._strip_think(ctx, "", final=True)
+        tail = ctx.aside.feed(self._strip_think(ctx, "", final=True)) + ctx.aside.flush()
         if tail:
             clean = tail if not wants_audio else remove_unspeechable(tail)
             ctx.generated_text += clean

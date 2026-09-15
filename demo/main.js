@@ -17,11 +17,11 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v59";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v60";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v59";
-import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v59";
-import { Ambience } from "./ui/ambience.js?v=audio-24k-v59";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v60";
+import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v60";
+import { Ambience } from "./ui/ambience.js?v=audio-24k-v60";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -69,6 +69,8 @@ const PERSONA_HANDOFF =
   + " address to copy, call show_on_screen with Markdown (math between $ signs) and then say a"
   + " short plain version aloud; never speak markup. If a play_sound tool is offered, cue one of"
   + " its sounds only when it fits the moment, at most once per reply, without announcing it."
+  + " Everything you write is spoken aloud exactly as written: never put notes to yourself,"
+  + " deliberation, or remarks about tools in the reply, and never explain a tool you did not use."
   + " When the user asks for a poem, song, story, list or explanation, that request overrides"
   + " the short-reply rule: give the whole thing in one reply, every line of it, without a"
   + " preamble and without waiting to be asked for more. Never promise something for later."
@@ -282,7 +284,8 @@ const TOOL_DEFS = {
       "Play one of your persona's sound effects on the user's speakers, once, when it fits the " +
       "moment: a spell being cast, the cat, the cauldron. At most one per reply, only when it " +
       "adds to the scene, always with a name from the list, and never say that you played it. " +
-      "For ordinary replies (facts, arithmetic, small talk) do not call this at all.",
+      "For ordinary replies (facts, arithmetic, small talk) do not call this at all. Decide " +
+      "silently: never write about whether to play a sound.",
     parameters: {
       type: "object",
       properties: { name: { type: "string", enum: [] } },

@@ -1113,3 +1113,33 @@ def test_system_prompt_carries_the_user_profile_and_no_assumptions_rule():
         and "Do not assume the user's gender" in system
     )
     assert system.index("About the user") < system.index("Current date and time")  # profile, then clock
+
+
+def test_streaming_drops_a_leading_note_about_tools():
+    """GLM at minimal reasoning effort sometimes deliberates in the content
+    before answering; that note must not reach TTS or the transcript."""
+    h = _make_handler(stream=True)
+    h.client.chat.completions.create = lambda **k: _FakeStream(
+        [
+            _chunk(content="(play_sound not needed"),
+            _chunk(content=" here, a request, so speak) Hmm, a delicious"),
+            _chunk(content=" potion you say. One drop warms you."),
+            _chunk(usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1)),
+        ]
+    )
+    text, _tools, _usage, _chat, _end = _drive(h)
+    assert "play_sound" not in text
+    assert text.startswith("Hmm, a delicious potion you say.")
+    assert "One drop warms you." in text
+
+
+def test_streaming_keeps_a_plain_parenthetical_opening():
+    h = _make_handler(stream=True)
+    h.client.chat.completions.create = lambda **k: _FakeStream(
+        [
+            _chunk(content="(cackles) Come closer, dearie."),
+            _chunk(usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1)),
+        ]
+    )
+    text, _tools, _usage, _chat, _end = _drive(h)
+    assert text.startswith("(cackles) Come closer")
