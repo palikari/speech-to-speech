@@ -18,6 +18,27 @@
 
 import { $, escHtml, DEBUG } from "./dom.js";
 
+/** One restaurant's contact card: phone (tap to call), website, hours.
+ *  @param {unknown} cards */
+function renderDetailsCard(cards) {
+  const d = /** @type {any} */ (Array.isArray(cards) ? cards[0] : null);
+  if (!d || !d.name) return "";
+  const phone = d.phone
+    ? `<div class="det-row"><span class="det-label">Phone</span><a class="det-call" href="tel:${escHtml(d.phone_dial || d.phone)}">${escHtml(d.phone)}</a></div>`
+    : `<div class="det-row"><span class="det-label">Phone</span><span class="det-muted">not listed</span></div>`;
+  const site = d.website
+    ? `<div class="det-row"><span class="det-label">Web</span><a class="det-link" href="${escHtml(d.website)}" target="_blank" rel="noopener">${escHtml(String(d.website).replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, ""))}</a></div>`
+    : "";
+  const open = d.open_now === true ? `<span class="det-open">open now</span>` : d.open_now === false ? `<span class="det-closed">closed now</span>` : "";
+  const hours = Array.isArray(d.hours) && d.hours.length
+    ? `<ul class="det-hours">${d.hours.map((h) => `<li>${escHtml(String(h))}</li>`).join("")}</ul>`
+    : "";
+  const title = d.maps_url
+    ? `<a class="rest-name" href="${escHtml(d.maps_url)}" target="_blank" rel="noopener">${escHtml(d.name)}</a>`
+    : `<span class="rest-name">${escHtml(d.name)}</span>`;
+  return `<div class="det-card">${title} ${open}<div class="rest-addr">${escHtml(String(d.address || "").split(",")[0])}</div>${phone}${site}${hours}</div>`;
+}
+
 /** One restaurant's recent inspections: a score timeline plus the latest violations.
  *  @param {unknown} cards */
 function renderInspectionCard(cards) {
@@ -36,6 +57,7 @@ function renderInspectionCard(cards) {
  *  @param {string} name @param {unknown} cards */
 function renderToolCards(name, cards) {
   if (name === "restaurant_inspections") return renderInspectionCard(cards);
+  if (name === "restaurant_details") return renderDetailsCard(cards);
   if (name !== "find_restaurants" || !Array.isArray(cards) || cards.length === 0) return "";
   const price = (n) => (typeof n === "number" ? "$".repeat(Math.max(1, n)) : "");
   const grade = (s) => (s >= 90 ? "good" : s >= 80 ? "fair" : "poor");
@@ -852,7 +874,8 @@ export class ChatView {
     this._appendHistTool(name, argsJson, output, cards);
     if (image) this._appendHistImage(image); // show the captured frame below the call
     const html = renderToolCards(name, cards);
-    if (html) this._spawnCardsBubble(name === "find_restaurants" ? "Restaurants" : name === "restaurant_inspections" ? "Health inspections" : name, html);
+    const titles = { find_restaurants: "Restaurants", restaurant_inspections: "Health inspections", restaurant_details: "Details" };
+    if (html) this._spawnCardsBubble(titles[name] ?? name, html);
     this._markUnread();
   }
 }

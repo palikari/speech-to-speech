@@ -17,10 +17,10 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v36";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v37";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v36";
-import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v36";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v37";
+import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v37";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -58,7 +58,9 @@ const PERSONA_HANDOFF =
   + " earlier, the tool is right. For where to eat, call find_restaurants: it returns Google"
   + " ratings and official health inspection scores; read out the top two or three with both."
   + " For one place's inspection history, scores over time or violations, call"
-  + " restaurant_inspections and read out the recent scores with their dates."
+  + " restaurant_inspections and read out the recent scores with their dates. For a phone number,"
+  + " website or opening hours, call restaurant_details. Call place_call only when the user asks"
+  + " you to call or phone someone, and say the name and number as you do."
   + " When the user asks for a poem, song, story, list or explanation, that request overrides"
   + " the short-reply rule: give the whole thing in one reply, every line of it, without a"
   + " preamble and without waiting to be asked for more. Never promise something for later."
@@ -229,6 +231,38 @@ const TOOL_DEFS = {
         max_results: { type: "integer", description: "How many to return, 1-8 (default 5)." },
       },
       required: ["query"],
+    },
+  },
+  restaurant_details: {
+    type: "function",
+    name: "restaurant_details",
+    description:
+      "Phone number, website, opening hours and whether it is open right now, for one restaurant " +
+      "(from an earlier find_restaurants result, or by name). Use it when the user asks for a " +
+      "number, a website, hours, or whether a place is open.",
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Restaurant name." },
+        area: { type: "string", description: "Street, city or zip if there are several locations." },
+      },
+      required: ["name"],
+    },
+  },
+  place_call: {
+    type: "function",
+    name: "place_call",
+    description:
+      "Open the user's phone dialer with a number ready to call. Only when the user explicitly asks " +
+      "to call or phone someone; never on your own initiative. Say whom and which number you are " +
+      "dialing as you do it. The user completes the call in their dialer.",
+    parameters: {
+      type: "object",
+      properties: {
+        number: { type: "string", description: "The phone number to dial, as shown by restaurant_details." },
+        name: { type: "string", description: "Who is being called." },
+      },
+      required: ["number"],
     },
   },
   restaurant_inspections: {
@@ -779,7 +813,7 @@ function activeToolDefs() {
     if (serverFetch) defs.push(TOOL_DEFS.web_fetch);
   }
   if (toolsEnabled.camera_snapshot) defs.push(TOOL_DEFS.camera_snapshot);
-  if (toolsEnabled.find_restaurants && serverRestaurants) defs.push(TOOL_DEFS.find_restaurants);
+  if (toolsEnabled.find_restaurants && serverRestaurants) defs.push(TOOL_DEFS.find_restaurants, TOOL_DEFS.restaurant_details, TOOL_DEFS.place_call);
   if (toolsEnabled.find_restaurants && serverInspections) defs.push(TOOL_DEFS.restaurant_inspections);
   return defs;
 }
@@ -1359,6 +1393,11 @@ async function runTool(name, argsJson, callId) {
     } else if (name === "find_restaurants") {
       const found = await execFindRestaurants(args);
       result = { output: found.text, cards: found.results };
+    } else if (name === "restaurant_details") {
+      const det = await execDetails(args);
+      result = { output: det.text, cards: det.found ? [det] : [] };
+    } else if (name === "place_call") {
+      result.output = placeCall(args);
     } else if (name === "restaurant_inspections") {
       const history = await execInspections(args);
       result = { output: history.text, cards: history.found ? [history] : [] };
@@ -1460,6 +1499,44 @@ async function execFindRestaurants(args) {
   const json = await res.json();
   const note = pos ? "" : "\n(Location not shared: results are for the area named in the query.)";
   return { text: `${json.text}${note}`, results: Array.isArray(json.results) ? json.results : [] };
+}
+
+/** @param {Record<string, unknown>} args @returns {Promise<{ text: string, found: boolean, phone?: string, phone_dial?: string }>} */
+async function execDetails(args) {
+  const name = typeof args.name === "string" ? args.name.trim() : "";
+  if (!name) return { text: "No restaurant name given.", found: false };
+  /** @type {Record<string, unknown>} */
+  const body = { name };
+  if (typeof args.area === "string" && args.area.trim()) body.area = args.area.trim();
+  const res = await fetch("api/restaurant_details", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    let detail = String(res.status);
+    try { const j = await res.json(); if (j.detail) detail = j.detail; } catch {}
+    throw new Error(`details lookup error (${detail})`);
+  }
+  return await res.json();
+}
+
+/** Hand a number to the browser's phone handler (Google Voice, FaceTime, ...) via a tel: link.
+ *  The user still presses Call there, so nothing dials by itself.
+ *  @param {Record<string, unknown>} args */
+function placeCall(args) {
+  const raw = typeof args.number === "string" ? args.number : "";
+  const digits = raw.replace(/[^\d+]/g, "");
+  if (digits.replace(/\D/g, "").length < 7) return `That does not look like a phone number: ${JSON.stringify(raw)}.`;
+  const who = typeof args.name === "string" && args.name.trim() ? args.name.trim() : "the number";
+  const a = document.createElement("a");
+  a.href = `tel:${digits}`;
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  console.log(`[call] tel:${digits} (${who})`);
+  return `Opened the phone dialer for ${who} at ${raw}. The user completes the call there; if nothing opened, the browser has no phone handler set up.`;
 }
 
 /** @param {Record<string, unknown>} args @returns {Promise<{ text: string, found: boolean, name?: string, address?: string, inspections?: unknown[] }>} */

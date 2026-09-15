@@ -291,3 +291,81 @@ async def test_inspection_history_picks_the_location_in_the_asked_area(monkeypat
     assert "Other locations with a similar name: 1" in out["text"]
     missing = await restaurants.inspection_history(restaurants.InspectionsRequest(name="Nowhere Grill"))
     assert missing["found"] is False and "No Georgia inspection record" in missing["text"]
+
+
+@pytest.mark.asyncio
+async def test_place_details_uses_recent_results_then_one_details_call(monkeypatch):
+    calls = []
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def post(self, url, headers=None, json=None, timeout=None):
+            calls.append(("search", json))
+            return httpx.Response(
+                200,
+                json={
+                    "places": [
+                        {
+                            "id": "pid-dee",
+                            "displayName": {"text": "Dee Thai"},
+                            "formattedAddress": "10945 State Bridge Rd, Alpharetta, GA",
+                        }
+                    ]
+                },
+            )
+
+        async def get(self, url, headers=None, timeout=None):
+            calls.append(("details", url))
+            assert headers["X-Goog-FieldMask"] == restaurants.DETAILS_FIELD_MASK
+            return httpx.Response(
+                200,
+                json={
+                    "id": "pid-dee",
+                    "displayName": {"text": "Dee Thai"},
+                    "formattedAddress": "10945 State Bridge Rd, Alpharetta, GA 30022",
+                    "nationalPhoneNumber": "(770) 754-6222",
+                    "internationalPhoneNumber": "+1 770-754-6222",
+                    "websiteUri": "https://deethairestaurants.com/",
+                    "currentOpeningHours": {"openNow": False},
+                    "regularOpeningHours": {
+                        "weekdayDescriptions": [
+                            "Monday: 11:30\u202fAM\u2009\u2013\u20093:00\u202fPM",
+                            "Tuesday: 11:30\u202fAM\u2009\u2013\u20099:30\u202fPM",
+                        ]
+                    },
+                    "googleMapsUri": "https://maps.google.com/?cid=2",
+                },
+            )
+
+    monkeypatch.setattr(restaurants, "PLACES_KEY", "places-key")
+    monkeypatch.setattr(restaurants.httpx, "AsyncClient", FakeClient)
+    restaurants._details_cache.clear()
+    restaurants._recent_places.clear()
+    restaurants.remember_places(
+        [{"id": "pid-dee", "name": "Dee Thai", "address": "10945 State Bridge Rd, Alpharetta, GA 30022"}]
+    )
+
+    out = await restaurants.place_details(restaurants.DetailsRequest(name="Dee Thai"), today="Tuesday")
+    assert out["found"] and out["phone"] == "(770) 754-6222" and out["phone_dial"] == "+17707546222"
+    assert out["hours"][1] == "Tuesday: 11:30 AM - 9:30 PM"  # thin spaces and dashes normalised
+    assert (
+        out["text"]
+        == "Dee Thai (10945 State Bridge Rd), phone (770) 754-6222, website deethairestaurants.com, closed right now, hours today, Tuesday: 11:30 AM - 9:30 PM."
+    )
+    assert [c[0] for c in calls] == ["details"]  # recent result resolved the id: no search call
+
+    again = await restaurants.place_details(restaurants.DetailsRequest(name="Dee Thai"), today="Tuesday")
+    assert again["phone"] == out["phone"] and len(calls) == 1  # cached
+
+    restaurants._recent_places.clear()
+    restaurants._details_cache.clear()
+    await restaurants.place_details(restaurants.DetailsRequest(name="Dee Thai", area="Alpharetta"), today="Tuesday")
+    assert [c[0] for c in calls][1:] == ["search", "details"]  # cold: an id lookup, then details

@@ -148,7 +148,7 @@ _Update at the end of a session that changed something._
   model / Warming up the voice; 25 s fail-safe), and assistant bubbles now
   stay while speaker output is audible (client emits `output-level`; chat
   view bumps the bubble's expiry, fades 3 s after the last word). Assets are
-  cache-busted with `?v=audio-24k-v36` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
+  cache-busted with `?v=audio-24k-v37` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
   editing demo JS/CSS or browsers keep the old files.
 - 2026-09-14 (tools): the LLM handler now parses the model's native
   `<tool_call><function=…><parameter=…>` XML blocks as well as the prompted
@@ -444,6 +444,18 @@ _Update at the end of a session that changed something._
   other same-name locations; the page shows a "Health inspections" card
   (score timeline + violations) in the history and as a live bubble.
   Inspections cached 24 h per establishment.
+- 2026-09-15 (phone, hours, calling): `restaurant_details` tool +
+  `/api/restaurant_details`: phone, website, opening hours and open-now for
+  one place via a Places details call (Enterprise-tier fields, 1,000 free a
+  month, so on demand only, cached 24 h per place; the id comes from the
+  last hour's find_restaurants results, `remember_places`, else a
+  Pro-tier id lookup). `place_call` tool: the page clicks a `tel:` link so
+  the browser's phone handler (Google Voice here) opens with the number;
+  the user presses Call, nothing dials by itself; the prompt allows it
+  only when the user asks to call. "Details" card with a tap-to-call phone,
+  website and hours. Later: Telnyx/Dograh for real outbound calls, and an
+  agent (Sam) placing calls with a disclosure line, once the agent layer
+  is server-side.
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache

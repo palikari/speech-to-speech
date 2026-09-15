@@ -427,6 +427,24 @@ async def find_restaurants(req: restaurants.RestaurantsRequest):
         raise HTTPException(status_code=502, detail=str(exc)[:200])
 
 
+@app.post("/api/restaurant_details")
+async def restaurant_details(req: restaurants.DetailsRequest):
+    """Phone, website and hours for one restaurant, for the model's restaurant_details tool."""
+    if not (req.name or "").strip():
+        raise HTTPException(status_code=400, detail="Empty name.")
+    if not restaurants.PLACES_KEY:
+        raise HTTPException(status_code=503, detail="Restaurant search is not configured.")
+    today = datetime.now().astimezone().strftime("%A")
+    try:
+        return JSONResponse(await restaurants.place_details(req, today))
+    except httpx.RequestError as exc:
+        logger.warning("place details unreachable: %r", exc)
+        raise HTTPException(status_code=502, detail="Place details provider unreachable.")
+    except RuntimeError as exc:
+        logger.warning("place details failed: %s", exc)
+        raise HTTPException(status_code=502, detail=str(exc)[:200])
+
+
 @app.post("/api/restaurant_inspections")
 async def restaurant_inspections(req: restaurants.InspectionsRequest):
     """Recent Georgia DPH inspections for one restaurant, for the model's restaurant_inspections tool."""

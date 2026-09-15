@@ -2926,3 +2926,18 @@ body.cam-on .footer {
 .insp-pts { color: var(--processing); font-family: var(--font-mono); font-size: 11px; }
 .insp-repeat { color: var(--error); font-family: var(--font-mono); font-size: 11px; }
 .insp-none { margin-top: 8px; font-size: 12px; color: var(--success); }
+
+/* ── Place details card (restaurant_details tool) ───────────────────────── */
+.det-card { margin-top: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-elev-2); }
+.det-row { display: flex; gap: 8px; align-items: baseline; margin-top: 6px; font-size: 12px; }
+.det-label { color: var(--text-faint); font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; min-width: 44px; }
+.det-call { color: var(--text); font-weight: 600; text-decoration: none; padding: 3px 8px; border-radius: 6px; background: color-mix(in srgb, var(--success) 18%, transparent); }
+.det-call:hover { background: color-mix(in srgb, var(--success) 30%, transparent); }
+.det-link { color: var(--accent-2); text-decoration: none; }
+.det-link:hover { text-decoration: underline; }
+.det-muted { color: var(--text-faint); }
+.det-open, .det-closed { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; margin-left: 6px; }
+.det-open { color: var(--success); }
+.det-closed { color: var(--text-faint); }
+.det-hours { list-style: none; margin: 6px 0 0; padding: 0; font-size: 11px; color: var(--text-dim); columns: 1; }
+.det-hours li { margin: 1px 0; }

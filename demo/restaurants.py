@@ -357,6 +357,138 @@ def format_text(req: RestaurantsRequest, results: list[dict]) -> str:
     return "\n".join(lines)
 
 
+# ── Place details: phone, website, hours (on demand, one place at a time) ────
+# These fields bill at the Enterprise tier (1,000 free a month), so they are
+# fetched only for the place the user asks about and cached for a day.
+
+PLACES_DETAILS_URL = "https://places.googleapis.com/v1/places/{id}"
+DETAILS_FIELD_MASK = ",".join(
+    (
+        "id",
+        "displayName",
+        "formattedAddress",
+        "nationalPhoneNumber",
+        "internationalPhoneNumber",
+        "websiteUri",
+        "regularOpeningHours",
+        "currentOpeningHours",
+        "googleMapsUri",
+    )
+)
+RECENT_PLACES_TTL_S = 3600
+DETAILS_CACHE_TTL_S = 24 * 3600
+_recent_places: dict[str, tuple[float, dict]] = {}  # place id -> (stamp, parsed place) from find_restaurants
+_details_cache: dict[str, tuple[float, dict]] = {}
+
+
+class DetailsRequest(BaseModel):
+    name: str
+    area: Optional[str] = None
+
+
+def remember_places(places: list[dict]) -> None:
+    now = time.monotonic()
+    for p in places:
+        if p.get("id"):
+            _recent_places[p["id"]] = (now, p)
+    for pid, (stamp, _p) in list(_recent_places.items()):
+        if now - stamp > RECENT_PLACES_TTL_S:
+            _recent_places.pop(pid, None)
+
+
+def _recent_place_matching(name: str, area: Optional[str]) -> Optional[dict]:
+    candidates = [p for _stamp, p in _recent_places.values() if name_matches(name, p.get("name", ""))]
+    if area:
+        a_words = [w for w in re.findall(r"[a-z0-9]+", area.lower()) if w not in _JOINERS]
+        preferred = [p for p in candidates if all(w in p.get("address", "").lower() for w in a_words)]
+        candidates = preferred or candidates
+    return candidates[0] if candidates else None
+
+
+def _clean_hours(text: str) -> str:
+    return " ".join(text.replace("\u202f", " ").replace("\u2009", " ").replace("\u2013", "-").split())
+
+
+def parse_details(d: dict) -> dict:
+    hours = [_clean_hours(h) for h in (d.get("regularOpeningHours") or {}).get("weekdayDescriptions") or []]
+    intl = d.get("internationalPhoneNumber") or ""
+    return {
+        "id": d.get("id", ""),
+        "name": (d.get("displayName") or {}).get("text", ""),
+        "address": d.get("formattedAddress", ""),
+        "phone": d.get("nationalPhoneNumber") or intl or "",
+        "phone_dial": re.sub(r"[^\d+]", "", intl) if intl else "",
+        "website": d.get("websiteUri") or "",
+        "open_now": (d.get("currentOpeningHours") or {}).get("openNow"),
+        "hours": hours,
+        "maps_url": d.get("googleMapsUri", ""),
+    }
+
+
+def format_details(det: dict, today: str) -> str:
+    street = det["address"].split(",")[0]
+    parts = [f"{det['name']} ({street})"]
+    parts.append(f"phone {det['phone']}" if det["phone"] else "no phone number listed")
+    if det["website"]:
+        site = re.sub(r"^https?://(www\.)?", "", det["website"]).rstrip("/")
+        parts.append(f"website {site}")
+    if det["open_now"] is not None:
+        parts.append("open right now" if det["open_now"] else "closed right now")
+    todays = next((h for h in det["hours"] if h.lower().startswith(today.lower())), None)
+    if todays:
+        parts.append(f"hours today, {todays}")
+    elif det["hours"]:
+        parts.append("hours: " + "; ".join(det["hours"]))
+    return ", ".join(parts) + "."
+
+
+async def place_details(req: DetailsRequest, today: str) -> dict:
+    if not PLACES_KEY:
+        raise RuntimeError("Restaurant search is not configured.")
+    async with httpx.AsyncClient() as client:
+        place = _recent_place_matching(req.name, req.area)
+        if place is None:
+            body = {
+                "textQuery": f"{req.name} {req.area or ''}".strip(),
+                "maxResultCount": 3,
+                "includedType": "restaurant",
+            }
+            headers = {
+                "Content-Type": "application/json",
+                "X-Goog-Api-Key": PLACES_KEY,
+                "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress",
+            }
+            resp = await client.post(PLACES_SEARCH_URL, headers=headers, json=body, timeout=15.0)
+            if resp.status_code != 200:
+                raise RuntimeError(f"Places error {resp.status_code}")
+            for raw in resp.json().get("places") or []:
+                cand = {
+                    "id": raw.get("id", ""),
+                    "name": (raw.get("displayName") or {}).get("text", ""),
+                    "address": raw.get("formattedAddress", ""),
+                }
+                if name_matches(req.name, cand["name"]):
+                    place = cand
+                    break
+        if place is None:
+            return {"found": False, "name": req.name, "text": f"No place found for {req.name!r}."}
+        hit = _details_cache.get(place["id"])
+        if hit and time.monotonic() - hit[0] < DETAILS_CACHE_TTL_S:
+            det = hit[1]
+        else:
+            resp = await client.get(
+                PLACES_DETAILS_URL.format(id=place["id"]),
+                headers={"X-Goog-Api-Key": PLACES_KEY, "X-Goog-FieldMask": DETAILS_FIELD_MASK},
+                timeout=15.0,
+            )
+            if resp.status_code != 200:
+                raise RuntimeError(f"Places details error {resp.status_code}")
+            det = parse_details(resp.json())
+            _details_cache[place["id"]] = (time.monotonic(), det)
+    logger.info("restaurant_details %r -> %s phone=%s", req.name, det["name"], "yes" if det["phone"] else "no")
+    return {**det, "found": True, "text": format_details(det, today)}
+
+
 # ── Inspection history ───────────────────────────────────────────────────────
 
 
@@ -533,6 +665,7 @@ async def find_restaurants(req: RestaurantsRequest) -> dict:
     if req.min_health_score is not None:
         results = [r for r in results if r["health_score"] is not None and r["health_score"] >= req.min_health_score]
     results = sort_results(results, sort_by)[: req.max_results]
+    remember_places(results)
     logger.info(
         "find_restaurants %r -> %d results (%s); scores matched %d/%d",
         req.query,
