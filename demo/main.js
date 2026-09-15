@@ -17,9 +17,9 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v26";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v27";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v26";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v27";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -51,9 +51,10 @@ const PERSONA_HANDOFF =
   + " dates, call the web_search tool when it is available and answer from its result, in"
   + " character. Never say that you are checking, fetching, looking something up or processing:"
   + " saying it does nothing. Either call web_search in this same reply or answer directly."
-  + " Never promise something for later, such as a poem, story, list or explanation you will"
-  + " give when asked again: deliver it in full in this same reply. The short-reply rule"
-  + " yields when the user asks for something longer.";
+  + " When the user asks for a poem, song, story, list or explanation, that request overrides"
+  + " the short-reply rule: give the whole thing in one reply, every line of it, without a"
+  + " preamble and without waiting to be asked for more. Never promise something for later."
+  + " Never prefix a reply with your name or a speaker label.";
 
 /** Personas: a named server-side voice plus a character prompt. Picking one
  *  fills the Voice and Instructions fields; both stay editable. */
