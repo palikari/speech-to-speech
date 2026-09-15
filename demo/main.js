@@ -17,11 +17,11 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v56";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v57";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v56";
-import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v56";
-import { Ambience } from "./ui/ambience.js?v=audio-24k-v56";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v57";
+import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v57";
+import { Ambience } from "./ui/ambience.js?v=audio-24k-v57";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -494,6 +494,11 @@ function tickAmbienceMeter() {
     return;
   }
   ambienceMeter.hidden = false;
+  // Label by whose bed is actually playing, never by the current persona: the
+  // two differ briefly during a crossfade, and must never differ otherwise.
+  const bedOwner = ambience.bedPersona();
+  const wanted = bedOwner && PERSONAS[bedOwner] ? `${PERSONAS[bedOwner].name}'s ambience` : "ambience";
+  if (ambienceMeterLabel.textContent !== wanted) ambienceMeterLabel.textContent = wanted;
   // The bars follow the player's state, which cannot read as silence while a
   // bed plays: full at rest, about a third while ducked under the voice. The
   // measured signal, normalised against its recent peak, only adds movement.
@@ -511,8 +516,6 @@ function tickAmbienceMeter() {
 }
 if (DEBUG) /** @type {any} */ (window).__ambience = ambience; // s2s.debug=1: poke at it from the console
 function startAmbienceMeter() {
-  const current = currentPersonaId();
-  ambienceMeterLabel.textContent = current ? `${PERSONAS[current].name}'s ambience` : "ambience";
   if (!meterFrame) meterFrame = requestAnimationFrame(tickAmbienceMeter);
 }
 function stopAmbienceMeter() {
@@ -2225,6 +2228,11 @@ settingsForm.addEventListener("submit", (event) => {
     if (typeof client.setAudioOutputDevice === "function") {
       void client.setAudioOutputDevice(settings.audioOutputId);
     }
+    // A persona chosen here is a switch like any other: swap the bed and the
+    // persona-specific tools (play_sound's list).
+    ambience.setPersona(currentPersonaId() ?? "");
+    window.setTimeout(startAmbienceMeter, 300);
+    pushToolsToSession();
   }
 });
 

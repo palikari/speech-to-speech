@@ -35,6 +35,9 @@ export class Ambience {
   /** Whether a bed is playing right now. */
   isPlaying() { return !!this._bed; }
 
+  /** The persona whose bed is playing, or "" when none is. */
+  bedPersona() { return this._bed?.persona ?? ""; }
+
   /** Whether the bed is currently ducked under the assistant's voice. */
   isDucked() { return this._ducked; }
 
