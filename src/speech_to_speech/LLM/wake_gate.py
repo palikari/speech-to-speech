@@ -28,6 +28,9 @@ class WakeConfig:
     enabled: bool = False
     words: list[str] = field(default_factory=list)  # wake words for the current persona
     others: dict[str, list[str]] = field(default_factory=dict)  # persona id -> its wake words
+    # "leading": another persona wakes only when addressed at the start of the turn;
+    # "anywhere": its name anywhere in the turn; "off": never (hand-offs by request only).
+    others_mode: str = "leading"
     window_s: float = DEFAULT_WINDOW_S
     sleep_phrases: list[str] = field(default_factory=lambda: list(DEFAULT_SLEEP_PHRASES))
 
@@ -64,6 +67,8 @@ def parse_wake_config(session: Any) -> Optional[WakeConfig]:
     others = raw.get("others") or {}
     if isinstance(others, dict):
         cfg.others = {str(k): [str(w) for w in v or [] if str(w).strip()] for k, v in others.items()}
+    mode = str(raw.get("others_mode") or "leading").lower()
+    cfg.others_mode = mode if mode in ("leading", "anywhere", "off") else "leading"
     try:
         cfg.window_s = float(raw.get("window_s", DEFAULT_WINDOW_S))
     except (TypeError, ValueError):
@@ -105,8 +110,64 @@ def _slack(word: str) -> int:
     return 0
 
 
-def contains_wake_word(text: str, words: Iterable[str]) -> Optional[str]:
-    """Return the first wake word found in *text* (whole words, transcription-tolerant)."""
+# How far into a turn another persona's name may sit to count as addressing it:
+# "Hey Bob, are you there?" yes; "I told Bob about the roof" no.
+OTHERS_LEADING_TOKENS = 3
+_ADDRESS_FILLERS = {"hey", "hi", "hello", "ok", "okay", "yo", "um", "uh", "so"}
+
+
+def _find_wake_word(tokens: list[str], words: Iterable[str]) -> Optional[tuple[str, int, int]]:
+    """(word, start index, length in tokens) of the first wake word in *tokens*, or None."""
+    for word in words:
+        parts = _tokens(word)
+        if not parts:
+            continue
+        n = len(parts)
+        for i in range(len(tokens) - n + 1):
+            window = tokens[i : i + n]
+            if all(_edit_distance(t, p, _slack(p)) <= _slack(p) for t, p in zip(window, parts)):
+                return word, i, n
+    return None
+
+
+def addressed_wake_word(text: str, words: Iterable[str]) -> Optional[str]:
+    """A wake word used as an address, not a mention: the first word after
+    fillers ("Hey Bob, ...", "Okay Unit Seven, status?"), or within the first
+    four words when a pause follows it ("Good morning, Bob, ...") or it ends
+    the turn ("You there Bob?"). "The robot vacuum broke", "I told Bob about
+    it" and "boo boo bob boo" do not count.
+    """
+    raw = (text or "").strip()
+    tokens = _tokens(raw)
+    dropped = 0
+    while tokens and tokens[0] in _ADDRESS_FILLERS:
+        tokens = tokens[1:]
+        dropped += 1
+    hit = _find_wake_word(tokens, words)
+    if hit is None:
+        return None
+    word, i, n = hit
+    if i == 0:
+        return word
+    if i < 4:
+        # Is the matched word followed by punctuation (or the end)? Look at the
+        # raw text after the (i+n)-th word.
+        spans = list(re.finditer(r"[A-Za-z0-9']+", raw))
+        end_idx = dropped + i + n - 1
+        if end_idx < len(spans):
+            tail = raw[spans[end_idx].end() :].lstrip()
+            if not tail or tail[0] in ",.!?;:":
+                return word
+    return None
+
+
+def contains_wake_word(text: str, words: Iterable[str], leading: Optional[int] = None) -> Optional[str]:
+    """Return the first wake word found in *text* (whole words, transcription-tolerant).
+
+    ``leading`` (any value) switches to the address-only rule of :func:`addressed_wake_word`.
+    """
+    if leading is not None:
+        return addressed_wake_word(text, words)
     tokens = _tokens(text)
     if not tokens:
         return None
@@ -137,10 +198,12 @@ def decide(cfg: WakeConfig, text: str, awake_until: float, now: Optional[float] 
     word = contains_wake_word(text, cfg.words)
     if word:
         return WakeDecision(True, f"addressed as {word!r}")
-    for persona, words in cfg.others.items():
-        other = contains_wake_word(text, words)
-        if other:
-            return WakeDecision(False, f"addressed to {persona!r} as {other!r}", other_persona=persona)
+    if cfg.others_mode != "off":
+        leading = OTHERS_LEADING_TOKENS if cfg.others_mode == "leading" else None
+        for persona, words in cfg.others.items():
+            other = contains_wake_word(text, words, leading=leading)
+            if other:
+                return WakeDecision(False, f"addressed to {persona!r} as {other!r}", other_persona=persona)
     if now < awake_until:
         return WakeDecision(True, f"awake for {awake_until - now:.0f}s more")
     return WakeDecision(False, "asleep: not addressed", drop=True)

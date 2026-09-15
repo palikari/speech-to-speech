@@ -148,7 +148,7 @@ _Update at the end of a session that changed something._
   model / Warming up the voice; 25 s fail-safe), and assistant bubbles now
   stay while speaker output is audible (client emits `output-level`; chat
   view bumps the bubble's expiry, fades 3 s after the last word). Assets are
-  cache-busted with `?v=audio-24k-v44` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
+  cache-busted with `?v=audio-24k-v45` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
   editing demo JS/CSS or browsers keep the old files.
 - 2026-09-14 (tools): the LLM handler now parses the model's native
   `<tool_call><function=…><parameter=…>` XML blocks as well as the prompted
@@ -509,6 +509,15 @@ _Update at the end of a session that changed something._
   reads "Standby when connected · ..." while idle, and "Muted · not
   listening" whenever the mic is muted (the orb goes grey with no listening
   bars), since a mute outranks standby.
+- 2026-09-15 (standby: other personas by address only): babble Parakeet
+  heard as "bob" switched Sam to Bob. `s2s_wake.others_mode` (page sends
+  "leading"): another persona's name counts only within the first three
+  tokens of the turn after fillers (hey/okay/...), so "Bob, are you there?"
+  and "Hey Unit Seven, status?" switch, "I told Bob about the roof" and
+  "boo boo bob" are overheard and dropped. "anywhere" restores the old
+  rule, "off" disables name-waking of others (hand-offs by request still
+  work through the page's phrase detector). The current persona's own name
+  still wakes from anywhere in the turn.
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache

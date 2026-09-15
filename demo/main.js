@@ -17,10 +17,10 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v44";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v45";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v44";
-import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v44";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v45";
+import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v45";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -740,6 +740,9 @@ function wakeConfigPayload() {
       enabled: wakeEnabled,
       words: current ? wakeWordsFor(current) : [],
       others,
+      // Another persona wakes only when addressed at the start of a turn
+      // ("Bob, are you there?"), not when merely mentioned or babbled.
+      others_mode: "leading",
       window_s: WAKE_WINDOW_S,
       sleep_phrases: WAKE_SLEEP_PHRASES,
     },

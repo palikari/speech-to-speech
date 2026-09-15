@@ -290,3 +290,49 @@ def test_client_notes_are_never_gated_and_only_overheard_turns_are_dropped():
     say("So anyway, the roof.")
     d = gate_turn(cfg)
     assert d.answer is False and d.drop is True
+
+
+def test_other_personas_wake_only_when_addressed_at_the_start():
+    from speech_to_speech.LLM.wake_gate import contains_wake_word
+
+    cfg = WakeConfig(
+        enabled=True, words=["sam", "samantha"], others={"assistant": ["bob"], "robot": ["unit seven", "robot"]}
+    )
+    # Addressed: at the start, fillers allowed, or a little later with a pause after the name.
+    for text in (
+        "Bob, are you there?",
+        "Hey Bob, what time is it?",
+        "Okay, Unit Seven, status?",
+        "Good morning, Bob, how are you?",
+        "You there Bob?",
+    ):
+        d = decide(cfg, text, awake_until=0)
+        assert d.answer is False and d.other_persona in ("assistant", "robot"), text
+    # Mentioned or babbled mid-sentence: not a hand-off; overheard and dropped.
+    for text in (
+        "Boo boo bob boo lala",
+        "I told Bob about the roof",
+        "The robot vacuum broke again",
+        "Boo boo bob lala boo",
+    ):
+        d = decide(cfg, text, awake_until=0)
+        assert d.answer is False and d.other_persona is None and d.drop is True, text
+    # The current persona still wakes from anywhere in the turn.
+    assert decide(cfg, "I wonder if Sam knows", awake_until=0).answer is True
+    # Modes.
+    cfg.others_mode = "anywhere"
+    assert decide(cfg, "I told Bob about the roof", awake_until=0).other_persona == "assistant"
+    cfg.others_mode = "off"
+    assert decide(cfg, "Bob, are you there?", awake_until=0).other_persona is None
+    assert contains_wake_word("hey unit seven status", ["unit seven"], leading=3) == "unit seven"
+
+
+def test_parse_wake_config_reads_others_mode():
+    session = RealtimeSessionCreateRequest.model_validate(
+        {"type": "realtime", "s2s_wake": {"enabled": True, "words": ["sam"], "others_mode": "off"}}
+    )
+    assert parse_wake_config(session).others_mode == "off"
+    session = RealtimeSessionCreateRequest.model_validate(
+        {"type": "realtime", "s2s_wake": {"enabled": True, "words": ["sam"], "others_mode": "bogus"}}
+    )
+    assert parse_wake_config(session).others_mode == "leading"
