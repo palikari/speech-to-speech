@@ -17,9 +17,10 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v31";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v32";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v31";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v32";
+import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v32";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -51,6 +52,10 @@ const PERSONA_HANDOFF =
   + " dates, call the web_search tool when it is available and answer from its result, in"
   + " character. Never say that you are checking, fetching, looking something up or processing:"
   + " saying it does nothing. Either call web_search in this same reply or answer directly."
+  + " For how many days until or since a date, what date is some days away, which weekday a date"
+  + " falls on, or any arithmetic, call date_math or calculate and read out the result; never"
+  + " count days or do sums in your head, and if the result contradicts something you said"
+  + " earlier, the tool is right."
   + " When the user asks for a poem, song, story, list or explanation, that request overrides"
   + " the short-reply rule: give the whole thing in one reply, every line of it, without a"
   + " preamble and without waiting to be asked for more. Never promise something for later."
@@ -589,6 +594,8 @@ function wakeConfigPayload() {
   const others = /** @type {Record<string, string[]>} */ ({});
   for (const id of Object.keys(PERSONAS)) if (id !== current) others[id] = wakeWordsFor(id);
   return {
+    // The server stamps the current date and time into the prompt in this zone.
+    s2s_clock: { tz: Intl.DateTimeFormat().resolvedOptions().timeZone },
     s2s_wake: {
       enabled: wakeEnabled,
       words: current ? wakeWordsFor(current) : [],
@@ -699,6 +706,8 @@ let offeredPersona = /** @type {string | null} */ (null);
 function activeToolDefs() {
   const defs = [];
   defs.push(TOOL_DEFS.switch_persona);
+  // Deterministic, keyless, always on: the model must not count days or do sums itself.
+  defs.push(LOCAL_TOOL_DEFS.date_math, LOCAL_TOOL_DEFS.calculate);
   if (toolsEnabled.web_search && searchAvailable()) {
     defs.push(TOOL_DEFS.web_search);
     if (serverFetch) defs.push(TOOL_DEFS.web_fetch);
@@ -1267,6 +1276,8 @@ async function runTool(name, argsJson, callId) {
     } else if (name === "web_fetch") {
       const url = typeof args.url === "string" ? args.url : "";
       result.output = await execWebFetch(url);
+    } else if (name === "date_math" || name === "calculate") {
+      result.output = runLocalTool(name, args) ?? `Unknown tool: ${name}`;
     } else if (name === "camera_snapshot") {
       const dataUrl = captureSnapshot();
       if (dataUrl) {

@@ -41,6 +41,7 @@ from speech_to_speech.LLM.chat import (
     make_assistant_message,
     make_system_message,
 )
+from speech_to_speech.LLM.clock import with_clock
 from speech_to_speech.LLM.compaction_prompt import CompactGenerateFn, build_compactor
 from speech_to_speech.LLM.text_prompt import build_text_system_prompt
 from speech_to_speech.LLM.tool_call.function_call import (
@@ -795,10 +796,11 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
         language_code = request.language_code
         language_code, _ = resolve_auto_language(language_code)
         lang_name = language_name_for_prompt(language_code, enable=self.enable_lang_prompt)
-        instructions = (
+        instructions = with_clock(
             response.instructions
             if response is not None and response.instructions is not None
-            else runtime_config.session.instructions
+            else runtime_config.session.instructions,
+            runtime_config.session,
         )
         tools = response.tools if response is not None and response.tools is not None else runtime_config.session.tools
         tool_choice = response.tool_choice if response and response.tool_choice else runtime_config.session.tool_choice

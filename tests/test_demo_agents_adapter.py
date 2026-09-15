@@ -159,9 +159,9 @@ const good = await setupAudio({
   kind: "capture-config",
   inputRate: 48000,
   outputRate: 24000,
-  version: "audio-24k-v31",
+  version: "audio-24k-v32",
 });
-if (good.modules.length !== 2 || good.modules.some((url) => !url.endsWith("?v=audio-24k-v31"))) {
+if (good.modules.length !== 2 || good.modules.some((url) => !url.endsWith("?v=audio-24k-v32"))) {
   throw new Error(`audio worklets were not versioned: ${JSON.stringify(good.modules)}`);
 }
 const capture = good.nodes.find((node) => node.name === "mic-capture");
@@ -384,6 +384,20 @@ def test_persona_phrase_detector():
         pytest.skip("node is not installed")
     subprocess.run(
         [node, "--test", "tests/persona-phrases.test.mjs"],
+        cwd=REPO_ROOT / "demo",
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_local_tools_date_math_and_calculator():
+    """The page's deterministic tools (demo/tests/local-tools.test.mjs)."""
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    subprocess.run(
+        [node, "--test", "tests/local-tools.test.mjs"],
         cwd=REPO_ROOT / "demo",
         check=True,
         capture_output=True,

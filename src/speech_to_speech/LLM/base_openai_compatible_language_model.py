@@ -37,6 +37,7 @@ from speech_to_speech.LLM.chat import (
     make_system_message,
     make_user_audio_message,
 )
+from speech_to_speech.LLM.clock import with_clock
 from speech_to_speech.LLM.compaction_prompt import CompactGenerateFn, build_compactor
 from speech_to_speech.LLM.text_prompt import build_text_system_prompt
 from speech_to_speech.LLM.utils import (
@@ -1009,7 +1010,9 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
             response.tool_choice if response and response.tool_choice else runtime_config.session.tool_choice
         )
         wants_audio = response_wants_audio(response)
-        self._apply_config(active_chat, instructions, wants_audio, language_name=lang_name)
+        self._apply_config(
+            active_chat, with_clock(instructions, runtime_config.session), wants_audio, language_name=lang_name
+        )
 
         audio_b64 = self._audio_to_wav_base64(request.audio, request.audio_sample_rate)
         audio_message = active_chat.add_item(make_user_audio_message(audio_b64))
@@ -1146,7 +1149,9 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
             response.tool_choice if response and response.tool_choice else runtime_config.session.tool_choice
         )
         wants_audio = response_wants_audio(response)
-        self._apply_config(active_chat, instructions, wants_audio, language_name=lang_name)
+        self._apply_config(
+            active_chat, with_clock(instructions, runtime_config.session), wants_audio, language_name=lang_name
+        )
 
         optional_kwargs = self._build_optional_kwargs(req_tools, req_tool_choice)
 

@@ -1040,3 +1040,21 @@ def test_wake_gate_declines_unaddressed_turns_and_opens_a_window_after_a_reply()
     assert ask("Hey Bob, what's the weather?") == "Sure."
     assert ask("And tomorrow?") == "Sure."  # inside the awake window
     assert ask("Esmerelda, are you there?") == ""  # another persona's wake word: client switches, not us
+
+
+def test_system_prompt_carries_the_current_date_in_the_clients_zone():
+    handler = _make_handler()
+    handler.client.chat.completions.next_result = _FakeStream([_chunk(content="Sure.")])
+    chat = Chat(10)
+    chat.add_item(make_user_message("What day is it?"))
+    session = RealtimeSessionCreateRequest.model_validate(
+        {"type": "realtime", "instructions": "Be brief.", "s2s_clock": {"tz": "Europe/London"}}
+    )
+    req = GenerateResponseRequest(
+        runtime_config=RuntimeConfig(chat=chat, session=session), turn_id="t", turn_revision=0
+    )
+    list(handler.process(req))
+    system = handler.client.chat.completions.last_kwargs["messages"][0]
+    assert system["role"] == "system"
+    assert "Be brief." in system["content"]
+    assert "Current date and time: " in system["content"] and "(Europe/London)" in system["content"]
