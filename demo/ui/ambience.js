@@ -38,6 +38,9 @@ export class Ambience {
   /** Whether the bed is currently ducked under the assistant's voice. */
   isDucked() { return this._ducked; }
 
+  /** Whether a bed should be playing (enabled, and the current persona has one), even if still loading. */
+  expectsBed() { return this._enabled && !!this._manifest[this._persona]?.bed; }
+
   /** The bed's current loudness, 0..1 (post-duck, pre-master), for a meter. */
   level() {
     if (!this._analyser || !this._bed) return 0;

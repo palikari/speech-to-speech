@@ -17,11 +17,11 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v54";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v55";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v54";
-import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v54";
-import { Ambience } from "./ui/ambience.js?v=audio-24k-v54";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v55";
+import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v55";
+import { Ambience } from "./ui/ambience.js?v=audio-24k-v55";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -484,7 +484,15 @@ let meterPeak = 0;
 function tickAmbienceMeter() {
   meterFrame = 0;
   const playing = ambience.isPlaying() && ambienceSettings.on;
-  if (!playing) { ambienceMeter.hidden = true; meterPeak = 0; return; }
+  if (!playing) {
+    ambienceMeter.hidden = true;
+    meterPeak = 0;
+    meterSmoothed = 0;
+    // A bed that is still decoding (a few MB of mp3) is not "playing" yet: keep
+    // polling so the meter appears when it starts, instead of giving up.
+    if (ambienceSettings.on && ambience.expectsBed()) meterFrame = requestAnimationFrame(tickAmbienceMeter);
+    return;
+  }
   ambienceMeter.hidden = false;
   // The bars follow the player's state, which cannot read as silence while a
   // bed plays: full at rest, about a third while ducked under the voice. The
