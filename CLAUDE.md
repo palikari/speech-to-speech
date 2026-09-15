@@ -559,6 +559,20 @@ _Update at the end of a session that changed something._
   non-empty transcript clears the flag (its own request drives the reply).
   Explicit `response.cancel` from the client does not set the flag. Tests
   in `tests/openai_realtime/test_websocket_router.py`.
+- To-do list (agreed 2026-09-15, in order): 1 user profile (done), 2
+  persona sound beds (Michael is collecting clips; keep them out of the
+  public repo), 3 settings tidy-up (Serper wording, tools grouping) plus a
+  `show_on_screen` tool: the persona passes markdown or LaTeX for things
+  better seen than heard (formulas, tables, code, step lists), rendered as
+  a card while she speaks a plain short version; 4 Mac mini bring-up (block
+  address via the UDM, Places key IP-restricted); 5 Cloudflare Tunnel +
+  Access; 6 standby default per device; 7 sign-in with invite keys
+  (Clerk/Auth0: Google, Apple, Microsoft), websocket proxied through the
+  demo server, per-session logging, visual pass; 8 pipeline pool > 1 on the
+  mini; 9 server-side agent layer (personas, tools, hand-off choreography
+  out of the page); 10 Dograh + Telnyx; 11 Sam places calls (disclosure
+  line); 12 Teams bot via Azure Communication Services; 13 on-device wake
+  word. Deferred: local prompt cache; opening hours at a later time.
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache
