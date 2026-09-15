@@ -148,7 +148,7 @@ _Update at the end of a session that changed something._
   model / Warming up the voice; 25 s fail-safe), and assistant bubbles now
   stay while speaker output is audible (client emits `output-level`; chat
   view bumps the bubble's expiry, fades 3 s after the last word). Assets are
-  cache-busted with `?v=audio-24k-v34` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
+  cache-busted with `?v=audio-24k-v35` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
   editing demo JS/CSS or browsers keep the old files.
 - 2026-09-14 (tools): the LLM handler now parses the model's native
   `<tool_call><function=…><parameter=…>` XML blocks as well as the prompted
@@ -424,6 +424,12 @@ _Update at the end of a session that changed something._
   the intent probe. Take recipe used: scratch script loading the Breeze
   model with the handler's own kwargs, 5 seeds, Parakeet (mlx-audio
   `generate`) coverage check, takes in the breeze-tts lab's outputs folder.
+- 2026-09-15 (cards in the live chat): a tool result with structured rows
+  (find_restaurants) now also appears as a `bubble cards` in the bubble
+  stack on the assistant's side, with the same card renderer as the history
+  panel and a dismiss button. It lingers 45 s, extended to 25 s after the
+  last spoken word while the reply plays (`onAssistantAudible`), one at a
+  time, and is evicted like any bubble when three newer ones arrive.
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache

@@ -42,6 +42,10 @@ function renderToolCards(name, cards) {
 
 // How long an assistant bubble stays after the last audible word.
 const ASSISTANT_LINGER_AFTER_SPEECH_MS = 3000;
+/** A cards bubble (restaurant results) is something to look at, not just read: it stays
+ *  while the reply is spoken and well after, unless the user dismisses it. */
+const CARDS_LINGER_MS = 45000;
+const CARDS_LINGER_AFTER_SPEECH_MS = 25000;
 // Breeze vocal cues the model may emit; spoken, but not worth showing as text.
 const VOCAL_CUE_RE = /\((?:laugh|chuckle|sigh|clears throat|cough)\)\s*/gi;
 /** @param {string} text */
@@ -117,6 +121,9 @@ export class ChatView {
     /** Tool chips shown during the current reply; dismissed when its text arrives.
      *  @type {HTMLElement[]} */
     this._toolBubbles = [];
+    /** The live cards bubble (tool results with structured rows), if one is showing.
+     *  @type {HTMLElement | null} */
+    this._cardsBubble = null;
 
     // ── Ephemeral bubble auto-dismiss ──────────────────────────────────────
     // Per-element expiry (epoch ms). A bubble fades once its expiry passes —
@@ -203,7 +210,12 @@ export class ChatView {
   /** @param {"user"|"assistant"|"tool"} role @param {string} text @returns {HTMLElement} */
   _spawnBubble(role, text) {
     let el;
-    if (role === "tool") {
+    if (role === "cards") {
+      // `text` is pre-rendered, escaped HTML (see renderToolCards).
+      el = document.createElement("div");
+      el.className = "bubble cards";
+      el.innerHTML = text;
+    } else if (role === "tool") {
       el = document.createElement("div");
       el.className = "bubble tool";
       el.innerHTML = `<svg class="bubble-tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${WRENCH_PATH}</svg><span class="bubble-tool-text">${escHtml(text)}</span>`;
@@ -491,6 +503,7 @@ export class ChatView {
     this._asstByResp.clear();
     if (opts?.dismiss) { this.dismissThinking(); this._dismissToolBubbles(); }
     else { this._thinkingBubble = null; this._thinkingSawTool = false; this._toolBubbles = []; }
+    this._cardsBubble = null;
   }
 
   // ── Client event handlers ─────────────────────────────────────────────────
@@ -730,9 +743,22 @@ export class ChatView {
    * this never fires, so a bubble can never get stuck.
    */
   onAssistantAudible() {
+    const cards = this._cardsBubble;
+    if (cards?.isConnected && !cards.classList.contains("out")) this._bumpDismiss(cards, CARDS_LINGER_AFTER_SPEECH_MS);
     const bubble = this._latestAsstBubble;
     if (!bubble?.isConnected || bubble.classList.contains("out")) return;
     this._bumpDismiss(bubble, ASSISTANT_LINGER_AFTER_SPEECH_MS);
+  }
+
+  /** Show a tool's structured rows as a live bubble on the assistant's side, with a dismiss button.
+   *  @param {string} title @param {string} html */
+  _spawnCardsBubble(title, html) {
+    if (this._cardsBubble?.isConnected) this._dismissBubble(this._cardsBubble); // one at a time
+    const el = this._spawnBubble("cards", `<div class="bubble-cards-head"><span class="bubble-role">${escHtml(title)}</span><button class="bubble-close" type="button" aria-label="Dismiss">×</button></div>${html}`);
+    el.querySelector(".bubble-close")?.addEventListener("click", () => this._dismissBubble(el));
+    this._cardsBubble = el;
+    this._bumpDismiss(el, CARDS_LINGER_MS);
+    return el;
   }
 
   /**
@@ -810,6 +836,8 @@ export class ChatView {
   onToolResult(name, argsJson, output, image, cards) {
     this._appendHistTool(name, argsJson, output, cards);
     if (image) this._appendHistImage(image); // show the captured frame below the call
+    const html = renderToolCards(name, cards);
+    if (html) this._spawnCardsBubble(name === "find_restaurants" ? "Restaurants" : name, html);
     this._markUnread();
   }
 }

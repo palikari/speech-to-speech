@@ -2896,3 +2896,21 @@ body.cam-on .footer {
 .rest-meta { color: var(--text-dim); font-size: 12px; margin-top: 2px; }
 .rest-count { color: var(--text-faint); }
 .rest-addr { color: var(--text-faint); font-size: 12px; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── Live cards bubble (structured tool results in the bubble stack) ─────── */
+.bubble.cards {
+  --bubble-dx: 10px;
+  align-self: flex-end;
+  width: 100%;
+  padding: 8px 10px 10px;
+}
+.bubble-cards-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 2px; }
+.bubble.cards .bubble-role { color: var(--voice-assistant); margin-bottom: 0; }
+.bubble-close {
+  appearance: none; border: 0; background: transparent; color: var(--text-faint);
+  font-size: 16px; line-height: 1; padding: 2px 6px; border-radius: 6px; cursor: pointer;
+}
+.bubble-close:hover { color: var(--text); background: var(--bg-elev-2); }
+.bubble.cards .rest-list { margin: 6px 0 0; gap: 5px; }
+.bubble.cards .rest-card { padding: 6px 8px; }
+.bubble.cards .rest-score { min-width: 34px; padding: 5px 0; font-size: 13px; }
