@@ -45,6 +45,9 @@ import asyncio
 import json
 import logging
 import os
+import re
+import subprocess
+from datetime import datetime, timezone
 from urllib.parse import urlsplit, urlunsplit
 
 import auth
@@ -75,6 +78,38 @@ LB_HF_TOKEN = os.environ.get("LB_HF_TOKEN", "").strip()
 # the LB address it is NOT a secret — /api/config sends it to the client, which
 # shows it read-only in Settings.
 SPEECH_TO_SPEECH_URL = os.environ.get("SPEECH_TO_SPEECH_URL", "").strip()
+
+
+def _build_info() -> dict:
+    """Version stamp shown in the page footer: the asset version index.html
+    serves (so a tab can tell it is stale), the git commit, and the newest
+    modification time of the demo's own files (dev-friendly: it moves on save)."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    asset_version = ""
+    try:
+        with open(os.path.join(here, "index.html"), encoding="utf-8") as fh:
+            m = re.search(r"main\.js\?v=([A-Za-z0-9._-]+)", fh.read())
+            asset_version = m.group(1) if m else ""
+    except OSError:
+        pass
+    commit = ""
+    try:
+        commit = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"], cwd=here, capture_output=True, text=True, timeout=3
+        ).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        pass
+    newest = 0.0
+    for name in ("index.html", "main.js", "style.css", "s2s-realtime-client.js", "server.py", "ui/chat.js"):
+        try:
+            newest = max(newest, os.path.getmtime(os.path.join(here, name)))
+        except OSError:
+            pass
+    updated = datetime.fromtimestamp(newest, tz=timezone.utc).isoformat() if newest else ""
+    return {"assetVersion": asset_version, "commit": commit, "updated": updated}
+
+
+BUILD_INFO = _build_info()
 if SPEECH_TO_SPEECH_URL:
     LOAD_BALANCER_URL = ""
 # HF injects SPACE_ID ("owner/space") into every Space runtime; it's absent
@@ -219,6 +254,8 @@ def config():
         "iceServers": RTC_ICE_SERVERS,
         "startupGreeting": STARTUP_GREETING,
         "auth": AUTH_ENABLED,
+        # Refreshed per request so an edited file shows a new timestamp without a restart.
+        "build": _build_info(),
     }
 
 

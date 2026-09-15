@@ -17,9 +17,9 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v16";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v17";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v16";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v17";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -1176,11 +1176,37 @@ async function execWebSearch(query) {
 }
 
 /** Learn server config (search key + connection target), then refresh the UI. */
+/** The asset version this tab actually runs (from this module's own URL). */
+const PAGE_ASSET_VERSION = new URL(import.meta.url).searchParams.get("v") || "";
+const buildStamp = /** @type {HTMLButtonElement} */ ($("#build-stamp"));
+
+/** @param {{ assetVersion?: string; commit?: string; updated?: string } | undefined} build */
+function renderBuildStamp(build) {
+  if (!buildStamp) return;
+  const version = PAGE_ASSET_VERSION.replace(/^audio-24k-/, "") || "dev";
+  const stale = !!build?.assetVersion && build.assetVersion !== PAGE_ASSET_VERSION;
+  let when = "";
+  if (build?.updated) {
+    const d = new Date(build.updated);
+    when = d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  }
+  const parts = [`build ${version}`];
+  if (build?.commit) parts.push(build.commit);
+  if (when) parts.push(`updated ${when}`);
+  buildStamp.textContent = stale ? `${parts.join(" · ")} — newer build served, click to reload` : parts.join(" · ");
+  buildStamp.classList.toggle("stale", stale);
+  buildStamp.disabled = false;
+}
+buildStamp?.addEventListener("click", () => {
+  if (buildStamp.classList.contains("stale")) location.reload();
+});
+
 async function fetchConfig() {
   try {
     const res = await fetch("api/config");
     if (res.ok) {
       const json = await res.json();
+      renderBuildStamp(json.build);
       serverSearchKey = !!json.search;
       lbMode = !!json.lb;
       // Lock to LB mode only when the deploy reports a load balancer.
@@ -2092,6 +2118,10 @@ async function onFatalError(err) {
 setState("idle");
 chat.renderEmptyState();
 renderWakeToggle();
+// A tab left open should notice a newer build (it happened during development).
+setInterval(() => {
+  fetch("api/config").then((r) => (r.ok ? r.json() : null)).then((j) => j && renderBuildStamp(j.build)).catch(() => {});
+}, 60000);
 initGateArc();
 void fetchConfig();
 // Start the webcam as soon as the user lands (camera tool defaults on), and

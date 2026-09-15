@@ -2848,3 +2848,22 @@ body.cam-on .footer {
   background: var(--accent);
   box-shadow: 0 0 8px var(--accent);
 }
+
+
+/* Build stamp in the footer: version, commit and last update. Turns into a
+ * reload prompt when the server is serving a newer build than this tab runs. */
+.footer .sep { margin: 0 8px; }
+.build-stamp {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  cursor: default;
+}
+.build-stamp.stale {
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+}
