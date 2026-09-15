@@ -940,6 +940,11 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
         logger.info("Wake gate: not answering (%s)", gate.reason)
         if gate.drop:
             drop_last_user_turn(request.runtime_config)
+        # Seal the turn: an unanswered turn stays reopenable for a few seconds so a
+        # pause mid-sentence is not orphaned, but a declined turn is final, or the
+        # next thing said would be appended to it ("boo boo" -> "boo boo hello").
+        if self.speculative_turns is not None:
+            self.speculative_turns.commit(request.turn_id, request.turn_revision)
         return True
 
     def _process_audio(self, request: LLMIn) -> Iterator[LLMOut]:

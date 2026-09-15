@@ -518,6 +518,13 @@ _Update at the end of a session that changed something._
   rule, "off" disables name-waking of others (hand-offs by request still
   work through the page's phrase detector). The current persona's own name
   still wakes from anywhere in the turn.
+- 2026-09-15 (standby: declined turns are sealed): in standby the user's
+  declined utterances concatenated ("boo boo" -> "boo boo hello" -> "boo
+  boo hello ding"): an unanswered turn stays reopenable for
+  `unanswered_reopen_ms` (7 s) so a mid-sentence pause is not orphaned,
+  and a declined turn never gets the reply that would seal it. Both LLM
+  handlers now `speculative_turns.commit()` the turn when the gate
+  declines it, so the next utterance is a new turn.
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache

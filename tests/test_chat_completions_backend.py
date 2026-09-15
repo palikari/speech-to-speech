@@ -1076,3 +1076,16 @@ def test_wake_gate_declined_turn_is_removed_from_the_history():
     assert not any(isinstance(o, LLMResponseChunk) for o in outs)
     user_texts = [i.content[0].text for i in chat.buffer if getattr(i, "role", None) == "user"]
     assert user_texts == ["Hey Bob, hello."]  # the overheard turn is gone from the model's context
+
+
+def test_wake_gate_declined_turn_is_sealed_against_reopen():
+    handler = _make_handler()
+    tracker = SpeculativeTurnTracker()
+    handler.speculative_turns = tracker
+    session = _session_with({"s2s_wake": {"enabled": True, "words": ["bob"]}})
+    chat = Chat(10)
+    rc = RuntimeConfig(chat=chat, session=session)
+    chat.add_item(make_user_message("boo boo"))
+    tracker.observe("turn_1", 0)  # the VAD registers the turn before the LLM sees it
+    list(handler.process(GenerateResponseRequest(runtime_config=rc, turn_id="turn_1", turn_revision=0)))
+    assert tracker.is_committed("turn_1", 0)  # the next utterance starts a new turn

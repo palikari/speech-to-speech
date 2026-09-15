@@ -764,6 +764,8 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
                 logger.info("Wake gate: not answering (%s)", gate.reason)
                 if gate.drop:
                     drop_last_user_turn(runtime_config)
+                if self.speculative_turns is not None:  # seal the turn: no reopen onto a declined turn
+                    self.speculative_turns.commit(ctx.turn_id, ctx.turn_revision)
                 yield EndOfResponse(
                     turn_id=ctx.turn_id,
                     turn_revision=ctx.turn_revision,
