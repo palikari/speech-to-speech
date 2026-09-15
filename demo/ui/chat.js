@@ -752,6 +752,26 @@ export class ChatView {
     this._asstByResp.delete(responseId);
   }
 
+  /** A persona hand-off happened — show who and how (e.g. "→ Barnaby · inferred from your intent").
+   *  @param {string} name @param {string} how */
+  onPersonaSwitch(name, how) {
+    if (this._thinkingBubble) this._thinkingSawTool = true;
+    const chip = this._spawnBubble("tool", `→ ${name} · ${how}`);
+    chip.classList.add("persona-switch");
+    this._toolBubbles.push(chip);
+    this._bumpDismiss(chip, 6000);
+    this._appendHistNote(`Switched to ${name} (${how})`);
+  }
+
+  /** @param {string} text */
+  _appendHistNote(text) {
+    const row = document.createElement("div");
+    row.className = "hist-msg hist-note";
+    row.textContent = text;
+    this._chatHistory.appendChild(row);
+    this._chatHistory.scrollTop = this._chatHistory.scrollHeight;
+  }
+
   /** The model called a tool — show an ephemeral "running" bubble.
    *  @param {string} name */
   onToolCall(name) {

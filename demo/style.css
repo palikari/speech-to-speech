@@ -2867,3 +2867,17 @@ body.cam-on .footer {
   cursor: pointer;
   text-decoration: underline;
 }
+
+
+/* Persona hand-off chip: swap the wrench colour for the assistant accent. */
+.bubble.tool.persona-switch .bubble-tool-icon { color: var(--voice-assistant); }
+.bubble.tool.persona-switch { color: var(--text); }
+.hist-note {
+  align-self: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  opacity: 0.8;
+  padding: 4px 0;
+}

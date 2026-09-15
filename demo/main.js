@@ -17,9 +17,9 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v23";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v24";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v23";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v24";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -493,10 +493,24 @@ function personaRequestedIn(transcript) {
   return null;
 }
 
-/** Make a persona the active one: settings, the Settings form, and the live session. */
-function applyPersona(id) {
+/** How a hand-off was triggered, for the chip and the console. */
+const SWITCH_REASONS = /** @type {Record<string, string>} */ ({
+  named: "asked by name",
+  addressed: "addressed by name",
+  inferred: "inferred from your intent",
+  settings: "chosen in Settings",
+});
+
+/** Make a persona the active one: settings, the Settings form, and the live session.
+ *  @param {string} id @param {keyof typeof SWITCH_REASONS} [reason] */
+function applyPersona(id, reason) {
   const persona = PERSONAS[id];
   if (!persona) return false;
+  if (reason) {
+    const how = SWITCH_REASONS[reason] ?? reason;
+    console.log(`[persona] → ${persona.name} · ${how}`);
+    if (client && LIVE_STATES.has(currentState)) chat.onPersonaSwitch(persona.name, how);
+  }
   settings = { ...settings, voice: persona.voice, instructions: persona.instructions, personaMode: "preset" };
   saveSettings(settings);
   inputVoice.value = persona.voice;
@@ -1120,8 +1134,7 @@ async function runTool(name, argsJson, callId) {
     if (name === "switch_persona") {
       const id = resolvePersona(args.persona);
       pendingPersona = null;
-      if (id) console.log(`[persona] model switched to ${id} (switch_persona tool)`);
-      if (id && applyPersona(id)) {
+      if (id && applyPersona(id, "inferred")) {
         result.output = `Switched to ${PERSONAS[id].label}. From now on you are that persona: reply in character, in their voice, and greet the user briefly.`;
       } else {
         result.output = `Unknown persona ${JSON.stringify(args.persona)}. Available: ${Object.keys(PERSONAS).join(", ")}.`;
@@ -1743,7 +1756,7 @@ async function doStart(audioContext = null) {
     tools: activeToolDefs(),
     audioOutputId: settings.audioOutputId || "",
     executeTool: async ({ name, arguments: args, callId }) => {
-      chat.onToolCall(name);
+      if (name !== "switch_persona") chat.onToolCall(name); // the switch announces itself
       const result = await runTool(name, args, callId);
       if (client === c) chat.onToolResult(name, args, result.output, result.image);
       return result;
@@ -1812,14 +1825,11 @@ async function doStart(audioContext = null) {
         // voice and prompt it started with, so a reply already in flight (the
         // current persona's farewell) keeps its voice; the next one is the
         // new persona's.
-        applyPersona(wanted);
+        applyPersona(wanted, wakeEnabled ? "addressed" : "named");
         if (wakeEnabled) {
           // In wake mode the server does not answer a turn addressed to
           // another persona; ask for the reply once that empty response ends.
-          console.log(`[persona] wake mode: ${wanted} was addressed; reply requested after this response`);
           replyAfterResponse = true;
-        } else {
-          console.log(`[persona] user asked for ${wanted}; switched`);
         }
       }
     }
