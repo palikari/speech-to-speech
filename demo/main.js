@@ -17,9 +17,9 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v22";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v23";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v22";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v23";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -1120,6 +1120,7 @@ async function runTool(name, argsJson, callId) {
     if (name === "switch_persona") {
       const id = resolvePersona(args.persona);
       pendingPersona = null;
+      if (id) console.log(`[persona] model switched to ${id} (switch_persona tool)`);
       if (id && applyPersona(id)) {
         result.output = `Switched to ${PERSONAS[id].label}. From now on you are that persona: reply in character, in their voice, and greet the user briefly.`;
       } else {
