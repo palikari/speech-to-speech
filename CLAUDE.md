@@ -148,7 +148,7 @@ _Update at the end of a session that changed something._
   model / Warming up the voice; 25 s fail-safe), and assistant bubbles now
   stay while speaker output is audible (client emits `output-level`; chat
   view bumps the bubble's expiry, fades 3 s after the last word). Assets are
-  cache-busted with `?v=audio-24k-v55` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
+  cache-busted with `?v=audio-24k-v56` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
   editing demo JS/CSS or browsers keep the old files.
 - 2026-09-14 (tools): the LLM handler now parses the model's native
   `<tool_call><function=…><parameter=…>` XML blocks as well as the prompted
@@ -601,9 +601,9 @@ _Update at the end of a session that changed something._
   Esmerelda today: bed = Halloween night ambience (2 min), one-shots spell
   cast (10 s), cauldron bubbles (trimmed to 8 s), cat purring (trimmed to 6 s).
   Volume default 15% (Michael's setting; the slider shows its percentage and
-  a 0-100 scale). A bottom-left meter (five bars from an AnalyserNode on the
-  bed, so ducking is visible) shows "<Persona>'s ambience" while a bed
-  plays; it lifts above the camera preview when that is on.
+  a 0-100 scale). A bottom-right meter (five bars: full at rest, a third while ducked,
+  the analyser adding motion) shows "<Persona>'s ambience" while a bed
+  plays; it keeps polling while a bed is still decoding.
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache
