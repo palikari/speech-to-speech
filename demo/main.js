@@ -17,10 +17,10 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v42";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v43";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v42";
-import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v42";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v43";
+import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v43";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -756,9 +756,14 @@ function renderWakeToggle() {
   wakeBtn.setAttribute("aria-pressed", wakeEnabled ? "true" : "false");
   const live = LIVE_STATES.has(currentState);
   const wakeName = name === "Bob" ? "Hey Bob" : name ?? "the name";
-  wakeLabel.textContent = wakeEnabled
-    ? (live ? `Standby · say "${wakeName}" to wake` : `Standby when connected · "${wakeName}" wakes`)
-    : (live ? "Listening · answers everything" : "Listening when connected");
+  // A muted mic outranks everything: nothing is heard, whatever standby says.
+  const muted = live && micMuted;
+  wakeBtn.toggleAttribute("data-muted", muted);
+  wakeLabel.textContent = muted
+    ? `Muted · not listening${wakeEnabled ? " · standby resumes on unmute" : ""}`
+    : wakeEnabled
+      ? (live ? `Standby · say "${wakeName}" to wake` : `Standby when connected · "${wakeName}" wakes`)
+      : (live ? "Listening · answers everything" : "Listening when connected");
 }
 
 /** Standby (wake word required) on or off; persisted, shown under the orb, sent to the server. */
@@ -918,6 +923,7 @@ function setState(next) {
   const view = STATE_VIEWS[next];
   circleBtn.disabled = view.disabled;
   circleBtn.className = `circle ${STATE_CLASS[next]}`;
+  if (micMuted && LIVE_STATES.has(next)) circleBtn.classList.add("muted");
   if (next !== "error") setCaption(view.caption);
 
   const live = LIVE_STATES.has(next);
@@ -1694,6 +1700,8 @@ function setMicMuted(muted) {
   micBtn.classList.toggle("muted", micMuted);
   micBtn.setAttribute("aria-label", micMuted ? "Unmute" : "Mute");
   micBtn.title = micMuted ? "Unmute" : "Mute";
+  circleBtn.classList.toggle("muted", micMuted); // grey orb, no listening bars
+  renderWakeToggle();
 }
 // A tap on any phone link (the cards) starts a call too: mute the same way.
 document.addEventListener("click", (e) => {

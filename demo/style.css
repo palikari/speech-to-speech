@@ -2952,3 +2952,10 @@ body.cam-on .footer {
 
 /* ── Standby: turns the server heard but did not answer ─────────────────── */
 .bubble.user.unaddressed, .hist-msg.user.unaddressed { opacity: 0.5; }
+
+/* ── Muted mic: the orb and the wake pill say so, whatever the state ─────── */
+.circle.muted { --glow: #94a3b8; }
+.circle.muted .circle-ring, .circle.muted .circle-ring-outer { animation: none; }
+.circle.muted .ind-bars { opacity: 0.25; }
+.wake-toggle[data-muted] { color: var(--error); border-color: color-mix(in srgb, var(--error) 50%, transparent); }
+.wake-toggle[data-muted] .wake-dot { background: var(--error); box-shadow: none; }
