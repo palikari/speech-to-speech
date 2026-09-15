@@ -2814,3 +2814,37 @@ body.cam-on .footer {
 .field-group.dim textarea {
   border-style: dashed;
 }
+
+
+/* Wake-word toggle under the orb: a small pill; the dot glows when armed. */
+.wake-toggle {
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+}
+.wake-toggle:hover { border-color: var(--text-dim); }
+.wake-toggle[aria-pressed="true"] {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+.wake-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--border);
+}
+.wake-toggle[aria-pressed="true"] .wake-dot {
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+}

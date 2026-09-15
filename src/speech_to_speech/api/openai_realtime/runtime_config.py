@@ -38,6 +38,9 @@ class RuntimeConfig(BaseModel):
     model_config = ConfigDict(validate_assignment=True, arbitrary_types_allowed=True)
 
     chat: Chat = Field(default_factory=lambda: Chat(10))
+    # Wake-word gate (see LLM/wake_gate.py): monotonic time until which the
+    # assistant answers without being named. 0 = asleep / wake mode unused.
+    wake_awake_until: float = 0.0
     session: RealtimeSessionCreateRequest = Field(
         default_factory=lambda: RealtimeSessionCreateRequest(type="realtime"),
         validate_default=True,

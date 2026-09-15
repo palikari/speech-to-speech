@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Iterator, Sized
 from queue import Empty
@@ -60,6 +61,7 @@ from speech_to_speech.LLM.utils import (
     sent_tokenize_preserving_markdown_code,
 )
 from speech_to_speech.LLM.voice_prompt import build_voice_system_prompt
+from speech_to_speech.LLM.wake_gate import WakeDecision, decide, parse_wake_config
 from speech_to_speech.pipeline.cancel_scope import CancelScope
 from speech_to_speech.pipeline.handler_types import LLMIn, LLMOut
 from speech_to_speech.pipeline.messages import (
@@ -662,6 +664,29 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
     # Main pipeline entry point
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _last_user_text(runtime_config: RuntimeConfig) -> str:
+        """Text of the newest user message in the conversation (transcript or typed)."""
+        for item in reversed(list(runtime_config.chat.buffer)):
+            if getattr(item, "role", None) == "user":
+                parts = getattr(item, "content", None) or []
+                texts = [p.text for p in parts if getattr(p, "type", None) == "input_text" and getattr(p, "text", None)]
+                return " ".join(texts).strip()
+        return ""
+
+    def _wake_gate(self, runtime_config: RuntimeConfig) -> WakeDecision | None:
+        """None when wake mode is not configured; else whether to answer this turn."""
+        cfg = parse_wake_config(runtime_config.session)
+        if cfg is None or not cfg.enabled:
+            return None
+        return decide(cfg, self._last_user_text(runtime_config), runtime_config.wake_awake_until)
+
+    @staticmethod
+    def _extend_awake_window(runtime_config: RuntimeConfig) -> None:
+        cfg = parse_wake_config(runtime_config.session)
+        if cfg is not None and cfg.enabled:
+            runtime_config.wake_awake_until = time.monotonic() + cfg.window_s
+
     def process(self, request: LLMIn) -> Iterator[LLMOut]:
         ctx = StreamContext()
 
@@ -688,6 +713,19 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
         response = request.response
         original_chat = runtime_config.chat
         out_of_band = is_out_of_band(response)
+        if not out_of_band:
+            gate = self._wake_gate(runtime_config)
+            if gate is not None and not gate.answer:
+                logger.info("Wake gate: not answering (%s)", gate.reason)
+                yield EndOfResponse(
+                    turn_id=ctx.turn_id,
+                    turn_revision=ctx.turn_revision,
+                    cancel_generation=gen,
+                    response_key=request.response_key,
+                )
+                return
+            if gate is not None:
+                logger.info("Wake gate: answering (%s)", gate.reason)
         # Snapshot the end of the conversation before generating so this turn's
         # output is written back at its own position even when non-interrupting
         # speech appends a newer user message while the model is still running.
@@ -871,6 +909,8 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
                 # Make failed hidden work unclaimable before its asynchronous
                 # logical-done notification reaches the realtime service.
                 request.prefetch_transaction.discard()
+        if not out_of_band:
+            self._extend_awake_window(runtime_config)
         yield EndOfResponse(
             turn_id=ctx.turn_id,
             turn_revision=ctx.turn_revision,

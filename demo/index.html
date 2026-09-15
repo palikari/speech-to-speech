@@ -11,7 +11,7 @@
       rel="stylesheet"
     />
     <link rel="icon" type="image/svg+xml" href="favicon.svg?v=4" />
-    <link rel="stylesheet" href="style.css?v=audio-24k-v14" />
+    <link rel="stylesheet" href="style.css?v=audio-24k-v15" />
   </head>
   <!--
     `booting` disables transitions/animations until the first paint commits.
@@ -133,6 +133,10 @@
 
         <p id="circle-caption" class="circle-caption" role="status">Tap to start</p>
         <p id="circle-subcaption" class="circle-subcaption" hidden></p>
+        <button id="wake-btn" class="wake-toggle" type="button" aria-pressed="false" title="Only answer when called by name">
+          <span class="wake-dot" aria-hidden="true"></span>
+          <span id="wake-label">Wake word off</span>
+        </button>
 
         <div id="queue-actions" class="queue-actions" hidden>
           <button id="join-queue-btn" class="join-queue-btn" type="button" hidden>
@@ -445,6 +449,6 @@
     </dialog>
 
     <script src="vendor/openai-realtime-agents.umd.js"></script>
-    <script type="module" src="main.js?v=audio-24k-v14"></script>
+    <script type="module" src="main.js?v=audio-24k-v15"></script>
   </body>
 </html>

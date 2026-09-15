@@ -117,7 +117,7 @@ _Update at the end of a session that changed something._
   model / Warming up the voice; 25 s fail-safe), and assistant bubbles now
   stay while speaker output is audible (client emits `output-level`; chat
   view bumps the bubble's expiry, fades 3 s after the last word). Assets are
-  cache-busted with `?v=audio-24k-v14` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
+  cache-busted with `?v=audio-24k-v15` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
   editing demo JS/CSS or browsers keep the old files.
 - 2026-09-14 (tools): the LLM handler now parses the model's native
   `<tool_call><function=…><parameter=…>` XML blocks as well as the prompted
@@ -186,6 +186,19 @@ _Update at the end of a session that changed something._
   Instructions fields (they mirror the preset for reference); Custom greys
   the dropdown and enables them. Mode persists (`s2s.ws.personaMode`);
   hand-offs and the switch_persona tool put the form back in Preset.
+- 2026-09-14 (wake words): server-side gate in `LLM/wake_gate.py`, called
+  from `LanguageModelHandler.process` before generation. Config rides on the
+  Realtime session as an extra field `s2s_wake` {enabled, words, others,
+  window_s, sleep_phrases} (pydantic keeps extras; the deep-merge preserves
+  them). Rules: answer if the turn names the current persona (whole words,
+  1-2 letters of transcription slack for long names) or arrives within
+  window_s (45) after the last reply; a sleep phrase ends the window; a
+  turn naming another persona is not answered by the server, the page
+  switches persona and requests the reply (`requestResponse`). Toggle
+  under the orb (`#wake-btn`, persisted `s2s.wake`); the page sends the
+  config on connect, on toggle, on persona change and on Save. Wake words
+  are the persona aliases: Bob/assistant, Esmerelda/Esmeralda/Esmer/witch,
+  Barnaby/captain, Karloff/professor/mad scientist/villain, Unit Seven/robot.
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache

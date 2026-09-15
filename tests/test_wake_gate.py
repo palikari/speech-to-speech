@@ -1,0 +1,102 @@
+from openai.types.realtime.realtime_session_create_request import RealtimeSessionCreateRequest
+
+from speech_to_speech.LLM.wake_gate import WakeConfig, contains_wake_word, decide, is_sleep_phrase, parse_wake_config
+
+
+def _cfg(**kw):
+    base = dict(
+        enabled=True,
+        words=["bob", "hey bob"],
+        others={"witch": ["esmerelda", "esmer"], "captain": ["barnaby", "captain"]},
+    )
+    base.update(kw)
+    return WakeConfig(**base)
+
+
+def test_wake_word_matches_whole_words_and_tolerates_transcription_slips():
+    assert contains_wake_word("Hey Bob, what time is it?", ["hey bob"]) == "hey bob"
+    assert contains_wake_word("Esmeralda, what's brewing?", ["esmerelda"]) == "esmerelda"  # one letter off
+    assert contains_wake_word("Ezmerelda are you there", ["esmerelda"]) == "esmerelda"
+    assert contains_wake_word("Tell me about bobsled racing.", ["bob"]) is None
+    assert contains_wake_word("I bought a robot vacuum.", ["robot"]) == "robot"  # whole word: caller decides context
+    assert contains_wake_word("Unit 7, status report.", ["unit seven"]) is None  # digits are not spelled out
+    assert contains_wake_word("unit seven status", ["unit seven"]) == "unit seven"
+
+
+def test_sleep_phrases():
+    assert is_sleep_phrase("Okay, go to sleep now.", ["go to sleep"])
+    assert not is_sleep_phrase("I could not sleep last night.", ["go to sleep"])
+
+
+def test_decide_gate_logic():
+    cfg = _cfg()
+    assert decide(cfg, "Hey Bob, what's the weather?", awake_until=0, now=100).answer
+    assert not decide(cfg, "What's the weather?", awake_until=0, now=100).answer
+    assert decide(cfg, "What's the weather?", awake_until=130, now=100).answer  # inside the window
+    d = decide(cfg, "Esmerelda, what's brewing?", awake_until=130, now=100)
+    assert not d.answer and d.other_persona == "witch"
+    assert not decide(cfg, "Thanks Bob, go to sleep.", awake_until=130, now=100).answer
+    assert decide(WakeConfig(enabled=False), "anything", awake_until=0, now=100).answer
+
+
+def test_parse_wake_config_from_session_extra():
+    session = RealtimeSessionCreateRequest.model_validate(
+        {
+            "type": "realtime",
+            "s2s_wake": {"enabled": True, "words": ["Hey Bob"], "others": {"witch": ["Esmerelda"]}, "window_s": 30},
+        }
+    )
+    cfg = parse_wake_config(session)
+    assert (
+        cfg
+        and cfg.enabled
+        and cfg.words == ["Hey Bob"]
+        and cfg.others == {"witch": ["Esmerelda"]}
+        and cfg.window_s == 30
+    )
+    assert parse_wake_config(RealtimeSessionCreateRequest(type="realtime")) is None
+
+
+def test_handler_gate_reads_the_latest_user_turn_and_extends_the_window(monkeypatch):
+    from openai.types.realtime.realtime_conversation_item_user_message import (
+        Content as UserContent,
+    )
+    from openai.types.realtime.realtime_conversation_item_user_message import (
+        RealtimeConversationItemUserMessage,
+    )
+
+    from speech_to_speech.api.openai_realtime.runtime_config import RuntimeConfig
+    from speech_to_speech.LLM.language_model import LanguageModelHandler
+
+    handler = object.__new__(LanguageModelHandler)
+    cfg = RuntimeConfig()
+    assert handler._wake_gate(cfg) is None  # wake mode not configured
+
+    cfg.apply_session_update(
+        RealtimeSessionCreateRequest.model_validate(
+            {
+                "type": "realtime",
+                "s2s_wake": {"enabled": True, "words": ["bob"], "others": {"witch": ["esmerelda"]}, "window_s": 45},
+            }
+        )
+    )
+
+    def say(text):
+        cfg.chat.add_item(
+            RealtimeConversationItemUserMessage(
+                type="message", role="user", content=[UserContent(type="input_text", text=text)]
+            )
+        )
+
+    say("What's the weather?")
+    assert handler._wake_gate(cfg).answer is False
+    say("Hey Bob, what's the weather?")
+    assert handler._wake_gate(cfg).answer is True
+    handler._extend_awake_window(cfg)
+    say("And tomorrow?")
+    assert handler._wake_gate(cfg).answer is True  # inside the window
+    say("Esmerelda, are you there?")
+    d = handler._wake_gate(cfg)
+    assert d.answer is False and d.other_persona == "witch"
+    say("Okay, go to sleep.")
+    assert handler._wake_gate(cfg).answer is False

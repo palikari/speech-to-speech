@@ -17,9 +17,9 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v14";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v15";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v14";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v15";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -117,6 +117,7 @@ const STORAGE_KEYS = {
   voice: "s2s.ws.voice",
   instructions: "s2s.ws.instructions",
   personaMode: "s2s.ws.personaMode", // "preset" | "custom"
+  wake: "s2s.wake", // "1" when the assistant only answers when called by name
   tools: "s2s.ws.tools",
   searchKey: "s2s.ws.searchKey",
   noiseGate: "s2s.ws.noiseGate",
@@ -502,8 +503,61 @@ function applyPersona(id) {
   if (client && LIVE_STATES.has(currentState)) {
     client.updateSession({ voice: persona.voice, instructions: persona.instructions });
   }
+  renderWakeToggle();
+  sendWakeConfig();
   return true;
 }
+
+// ── Wake words ───────────────────────────────────────────────────────────────
+// When armed, the server only answers a turn that names the current persona
+// (or arrives within WAKE_WINDOW_S of its last reply). A turn that names
+// another persona is not answered by the server; this page switches persona
+// and asks for the reply itself, so "Esmerelda, ..." gets Esmerelda.
+const WAKE_WINDOW_S = 45;
+const WAKE_SLEEP_PHRASES = ["go to sleep", "that's all", "that is all", "never mind", "goodbye"];
+let wakeEnabled = localStorage.getItem(STORAGE_KEYS.wake) === "1";
+const wakeBtn = $("#wake-btn");
+const wakeLabel = $("#wake-label");
+
+/** Spoken names that wake a persona. "Hey X" works because X is matched as a word. */
+function wakeWordsFor(id) {
+  return PERSONAS[id]?.aliases ?? [];
+}
+
+function wakeConfigPayload() {
+  const current = currentPersonaId();
+  const others = /** @type {Record<string, string[]>} */ ({});
+  for (const id of Object.keys(PERSONAS)) if (id !== current) others[id] = wakeWordsFor(id);
+  return {
+    s2s_wake: {
+      enabled: wakeEnabled,
+      words: current ? wakeWordsFor(current) : [],
+      others,
+      window_s: WAKE_WINDOW_S,
+      sleep_phrases: WAKE_SLEEP_PHRASES,
+    },
+  };
+}
+
+function sendWakeConfig() {
+  if (client && LIVE_STATES.has(currentState)) client.sendSessionExtra(wakeConfigPayload());
+}
+
+function renderWakeToggle() {
+  const current = currentPersonaId();
+  const name = current ? PERSONAS[current].name : null;
+  wakeBtn.setAttribute("aria-pressed", wakeEnabled ? "true" : "false");
+  wakeLabel.textContent = wakeEnabled
+    ? `Wake word on · say "${name === "Bob" ? "Hey Bob" : name ?? "the name"}"`
+    : "Wake word off";
+}
+
+wakeBtn.addEventListener("click", () => {
+  wakeEnabled = !wakeEnabled;
+  localStorage.setItem(STORAGE_KEYS.wake, wakeEnabled ? "1" : "0");
+  renderWakeToggle();
+  sendWakeConfig();
+});
 
 /** The persona whose voice is currently selected, or null for a custom voice. */
 function currentPersonaId() {
@@ -512,6 +566,7 @@ function currentPersonaId() {
 
 /** A persona the user asked for by phrase; applied once the in-flight reply ends. */
 let pendingPersona = /** @type {string | null} */ (null);
+let wakeConfigSent = false;
 
 function activeToolDefs() {
   const defs = [];
@@ -1321,6 +1376,8 @@ settingsForm.addEventListener("submit", (event) => {
   // output can switch live when the browser supports AudioContext.setSinkId;
   // mic device changes need a Restart (new getUserMedia stream).
   chat.setAssistantName(PERSONAS[currentPersonaId() ?? ""]?.name ?? "Assistant");
+  renderWakeToggle();
+  sendWakeConfig();
   if (client && LIVE_STATES.has(currentState)) {
     client.updateSession({ voice: settings.voice, instructions: settings.instructions });
     if (typeof client.setAudioOutputDevice === "function") {
@@ -1619,6 +1676,7 @@ async function doStart(audioContext = null) {
   chat.reset();
   chat.setAssistantName(PERSONAS[currentPersonaId() ?? ""]?.name ?? "Assistant");
   pendingPersona = null;
+  wakeConfigSent = false;
   setState("connecting");
   setCaption("Asking for mic…", "muted");
   beginWarmup();
@@ -1710,8 +1768,16 @@ async function doStart(audioContext = null) {
       // first, that wins and the pending request is dropped.
       const wanted = personaRequestedIn(d.text);
       if (wanted && wanted !== currentPersonaId()) {
-        console.log(`[persona] user asked for ${wanted}; switching after this reply`);
-        pendingPersona = wanted;
+        if (wakeEnabled) {
+          // The server does not answer a turn addressed to another persona;
+          // switch immediately and request the reply as the new persona.
+          console.log(`[persona] wake mode: ${wanted} was addressed; switching and requesting a reply`);
+          applyPersona(wanted);
+          client?.requestResponse();
+        } else {
+          console.log(`[persona] user asked for ${wanted}; switching after this reply`);
+          pendingPersona = wanted;
+        }
       }
     }
   });
@@ -1947,6 +2013,10 @@ function onClientStatus(status) {
       break;
     case "connected":
       setState("listening");
+      if (!wakeConfigSent) {
+        wakeConfigSent = true;
+        sendWakeConfig();
+      }
       break;
     case "user-speaking":
       setState("user-speaking");
@@ -2013,6 +2083,7 @@ async function onFatalError(err) {
 
 setState("idle");
 chat.renderEmptyState();
+renderWakeToggle();
 initGateArc();
 void fetchConfig();
 // Start the webcam as soon as the user lands (camera tool defaults on), and
