@@ -17,9 +17,9 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v17";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v18";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v17";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v18";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -1797,16 +1797,18 @@ async function doStart(audioContext = null) {
       // first, that wins and the pending request is dropped.
       const wanted = personaRequestedIn(d.text);
       if (wanted && wanted !== currentPersonaId()) {
+        // Safe to switch right away: the server stamps each response with the
+        // voice and prompt it started with, so a reply already in flight (the
+        // current persona's farewell) keeps its voice; the next one is the
+        // new persona's.
+        applyPersona(wanted);
         if (wakeEnabled) {
-          // The server does not answer a turn addressed to another persona,
-          // but its (empty) response is still in flight: switch now, and ask
-          // for the reply as the new persona once that response has ended.
-          console.log(`[persona] wake mode: ${wanted} was addressed; switching, reply requested after this response`);
-          applyPersona(wanted);
+          // In wake mode the server does not answer a turn addressed to
+          // another persona; ask for the reply once that empty response ends.
+          console.log(`[persona] wake mode: ${wanted} was addressed; reply requested after this response`);
           replyAfterResponse = true;
         } else {
-          console.log(`[persona] user asked for ${wanted}; switching after this reply`);
-          pendingPersona = wanted;
+          console.log(`[persona] user asked for ${wanted}; switched`);
         }
       }
     }

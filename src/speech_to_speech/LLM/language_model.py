@@ -157,6 +157,7 @@ class StreamContext(BaseModel):
     # thinking disabled in the chat template; nothing inside it is spoken.
     in_think: bool = False
     think_pending: str = ""
+    voice: Optional[str] = None  # session voice when the response started
     input_tokens: int = 0
     sentence_batch: list[str] = Field(default_factory=list)
     turn_id: str | None = None
@@ -421,6 +422,7 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
                 turn_revision=ctx.turn_revision,
                 speech_stopped_at_s=ctx.speech_stopped_at_s,
                 cancel_generation=ctx.cancel_generation,
+                voice=ctx.voice,
             )
 
         while ctx.enter_code and (found := self._find_tool_block_start(printable_text, ctx)) is not None:
@@ -466,6 +468,7 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
                         turn_revision=ctx.turn_revision,
                         speech_stopped_at_s=ctx.speech_stopped_at_s,
                         cancel_generation=ctx.cancel_generation,
+                        voice=ctx.voice,
                     )
                 )
 
@@ -657,12 +660,23 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
                 turn_revision=ctx.turn_revision,
                 speech_stopped_at_s=ctx.speech_stopped_at_s,
                 cancel_generation=ctx.cancel_generation,
+                voice=ctx.voice,
             )
             ctx.sentence_batch = []
 
     # ------------------------------------------------------------------
     # Main pipeline entry point
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _voice_snapshot(runtime_config: RuntimeConfig, response: RealtimeResponseCreateParams | None) -> Optional[str]:
+        """The voice this response should be spoken in, fixed at generation start."""
+        if response is not None and response.audio and response.audio.output and response.audio.output.voice:
+            return str(response.audio.output.voice)
+        audio = runtime_config.session.audio
+        output = audio.output if audio is not None else None
+        voice = output.voice if output is not None else None
+        return str(voice) if voice else None
 
     @staticmethod
     def _last_user_text(runtime_config: RuntimeConfig) -> str:
@@ -713,6 +727,7 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
         response = request.response
         original_chat = runtime_config.chat
         out_of_band = is_out_of_band(response)
+        ctx.voice = self._voice_snapshot(runtime_config, response)
         if not out_of_band:
             gate = self._wake_gate(runtime_config)
             if gate is not None and not gate.answer:
@@ -836,6 +851,7 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
                     turn_revision=ctx.turn_revision,
                     speech_stopped_at_s=ctx.speech_stopped_at_s,
                     cancel_generation=ctx.cancel_generation,
+                    voice=ctx.voice,
                     response_key=request.response_key,
                     prefetch_transaction=request.prefetch_transaction,
                 )

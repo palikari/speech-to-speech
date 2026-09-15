@@ -633,3 +633,11 @@ def test_unclosed_think_block_is_swallowed():
     out, ctx = _feed_think(["<think>", "still thinking", " forever"])
     assert out == ""
     assert ctx.in_think is True
+
+
+def test_chunks_carry_the_voice_captured_at_response_start():
+    handler = object.__new__(LanguageModelHandler)
+    handler.stream_batch_sentences = 1
+    ctx = StreamContext(voice="witch")
+    chunks, _tools, _remaining = handler._process_printable_text("Hello there. And more", None, [], ctx)
+    assert chunks and all(c.voice == "witch" for c in chunks)

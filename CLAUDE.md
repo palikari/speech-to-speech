@@ -117,7 +117,7 @@ _Update at the end of a session that changed something._
   model / Warming up the voice; 25 s fail-safe), and assistant bubbles now
   stay while speaker output is audible (client emits `output-level`; chat
   view bumps the bubble's expiry, fades 3 s after the last word). Assets are
-  cache-busted with `?v=audio-24k-v17` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
+  cache-busted with `?v=audio-24k-v18` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
   editing demo JS/CSS or browsers keep the old files.
 - 2026-09-14 (tools): the LLM handler now parses the model's native
   `<tool_call><function=…><parameter=…>` XML blocks as well as the prompted
@@ -213,6 +213,14 @@ _Update at the end of a session that changed something._
   mismatch turns the stamp into a "newer build served, click to reload"
   link. This exists because a tab running stale JS reproduced an already
   fixed bug.
+- 2026-09-14 (voice stamping): each response is stamped with the session
+  voice at generation start (`LLMResponseChunk.voice` -> `TTSInput.voice`,
+  preferred by the Breeze handler over the live session config). A
+  session.update arriving mid-response, which is exactly what a persona
+  hand-off does, changes the next response's voice, never the farewell
+  already being spoken. Verified by sending the switch the instant the tool
+  call appeared. The client now applies a phrase-based switch immediately
+  in both modes (the deferral is no longer needed).
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache

@@ -627,9 +627,17 @@ class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
         self,
         runtime_config: RuntimeConfig | None = None,
         response: RealtimeResponseCreateParams | None = None,
+        voice: Optional[str] = None,
     ) -> None:
-        session_voice: Optional[str] = None
-        if response and response.audio and response.audio.output:
+        """Select the voice for this utterance.
+
+        ``voice`` is the session voice captured when its response started
+        generating; it wins over the live session config so a persona
+        hand-off mid-response does not change the voice of the farewell
+        already being spoken.
+        """
+        session_voice: Optional[str] = voice or None
+        if not session_voice and response and response.audio and response.audio.output:
             resp_voice = response.audio.output.voice
             session_voice = str(resp_voice) if resp_voice else None
         if not session_voice and runtime_config is not None:
@@ -765,7 +773,7 @@ class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut]):
         coalesced_text, _language_code = self._coalesce_pending_tts_input(tts_input)
         text = coalesced_text or "Hello."
 
-        self._apply_session_voice_override(tts_input.runtime_config, tts_input.response)
+        self._apply_session_voice_override(tts_input.runtime_config, tts_input.response, tts_input.voice)
 
         console.print(f"[green]ASSISTANT: {text}")
 

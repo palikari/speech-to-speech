@@ -437,3 +437,16 @@ def test_stream_cuts_a_wobbling_held_sound(monkeypatch, tmp_path, caplog):
 
     assert sum(len(b) for b in blocks) / PIPELINE_SR <= 2.5
     assert "stopped on a held sound" in caplog.text
+
+
+def test_stamped_voice_wins_over_live_session_voice(monkeypatch, tmp_path):
+    d = _voice_dir(tmp_path)
+    handler, _fake = _make_handler(monkeypatch, tmp_path, voice_dir=str(d))
+    live = SimpleNamespace(session=SimpleNamespace(audio=SimpleNamespace(output=SimpleNamespace(voice="villain"))))
+
+    handler._apply_session_voice_override(live, None, voice="villain")
+    assert handler.ref_audio == str(d / "villain.wav")
+    handler.on_session_end()
+    # the session already moved on to another voice, but this utterance was stamped with the old one
+    handler._apply_session_voice_override(live, None, voice=None)
+    assert handler.ref_audio == str(d / "villain.wav")

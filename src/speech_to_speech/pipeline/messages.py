@@ -147,6 +147,10 @@ class LLMResponseChunk(PipelineMessage):
     parts: list[AssistantOutputPart] = Field(default_factory=list)
     text: str = ""
     language_code: Optional[str] = None
+    # Session voice captured when this response started generating, so a
+    # session.update arriving mid-response (e.g. a persona hand-off) changes
+    # the next response's voice, never the one already being spoken.
+    voice: Optional[str] = None
     tools: list[ResponseFunctionToolCall] = Field(default_factory=list)
     runtime_config: RuntimeConfig | None = None
     response: RealtimeResponseCreateParams | None = None
@@ -204,6 +208,7 @@ class TTSInput(PipelineMessage):
     tag: Literal["tts_input"] = "tts_input"
     text: str
     language_code: Optional[str] = None
+    voice: Optional[str] = None  # see LLMResponseChunk.voice
     runtime_config: RuntimeConfig | None = None
     response: RealtimeResponseCreateParams | None = None
     turn_id: str | None = None
