@@ -821,4 +821,9 @@ async def session_end(request: Request):
 
 # Static front-end. Registered last so the /api routes win. `html=True` serves
 # index.html at "/". The repo is public anyway, so serving the dir is fine.
+# KaTeX (formulas in on-screen cards) straight from node_modules; the CSS pulls
+# its fonts by relative path, so the whole dist folder is mounted.
+_KATEX_DIST = os.path.join(HERE, "node_modules", "katex", "dist")
+if os.path.isdir(_KATEX_DIST):
+    app.mount("/vendor/katex", StaticFiles(directory=_KATEX_DIST), name="katex")
 app.mount("/", StaticFiles(directory=HERE, html=True), name="static")

@@ -159,9 +159,9 @@ const good = await setupAudio({
   kind: "capture-config",
   inputRate: 48000,
   outputRate: 24000,
-  version: "audio-24k-v48",
+  version: "audio-24k-v49",
 });
-if (good.modules.length !== 2 || good.modules.some((url) => !url.endsWith("?v=audio-24k-v48"))) {
+if (good.modules.length !== 2 || good.modules.some((url) => !url.endsWith("?v=audio-24k-v49"))) {
   throw new Error(`audio worklets were not versioned: ${JSON.stringify(good.modules)}`);
 }
 const capture = good.nodes.find((node) => node.name === "mic-capture");
@@ -398,6 +398,20 @@ def test_local_tools_date_math_and_calculator():
         pytest.skip("node is not installed")
     subprocess.run(
         [node, "--test", "tests/local-tools.test.mjs"],
+        cwd=REPO_ROOT / "demo",
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_markdown_renderer():
+    """The on-screen Markdown renderer (demo/tests/markdown.test.mjs)."""
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    subprocess.run(
+        [node, "--test", "tests/markdown.test.mjs"],
         cwd=REPO_ROOT / "demo",
         check=True,
         capture_output=True,

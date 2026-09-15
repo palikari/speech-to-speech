@@ -17,6 +17,7 @@
  */
 
 import { $, escHtml, DEBUG } from "./dom.js";
+import { renderMarkdown } from "./markdown.js";
 
 /** One restaurant's contact card: phone (tap to call), website, hours.
  *  @param {unknown} cards */
@@ -75,7 +76,17 @@ function renderLinkCard(cards) {
   return `<div class="link-card">${c.opened ? "Opened in a new tab: " : "Tap to open: "}<a href="${escHtml(c.url)}" target="_blank" rel="noopener">${escHtml(label)} for ${escHtml(c.name || "")}</a></div>`;
 }
 
+/** Something the assistant chose to show rather than say: Markdown (+ KaTeX math).
+ *  @param {unknown} cards */
+function renderScreenCard(cards) {
+  const c = /** @type {any} */ (Array.isArray(cards) ? cards[0] : null);
+  if (!c || typeof c.markdown !== "string" || !c.markdown.trim()) return "";
+  const title = typeof c.title === "string" && c.title.trim() ? `<div class="screen-title">${escHtml(c.title.trim())}</div>` : "";
+  return `<div class="screen-card">${title}<div class="md">${renderMarkdown(c.markdown)}</div></div>`;
+}
+
 function renderToolCards(name, cards) {
+  if (name === "show_on_screen") return renderScreenCard(cards);
   if (name === "restaurant_inspections") return renderInspectionCard(cards);
   if (name === "open_page") return renderLinkCard(cards);
   if (name === "restaurant_details") return renderDetailsCard(cards);
@@ -827,9 +838,10 @@ export class ChatView {
 
   /** Show a tool's structured rows as a live bubble on the assistant's side, with a dismiss button.
    *  @param {string} title @param {string} html */
-  _spawnCardsBubble(title, html) {
+  _spawnCardsBubble(title, html, wide = false) {
     if (this._cardsBubble?.isConnected) this._dismissBubble(this._cardsBubble); // one at a time
     const el = this._spawnBubble("cards", `<div class="bubble-cards-head"><span class="bubble-role">${escHtml(title)}</span><button class="bubble-close" type="button" aria-label="Dismiss">×</button></div>${html}`);
+    if (wide) el.classList.add("wide");
     el.querySelector(".bubble-close")?.addEventListener("click", () => this._dismissBubble(el));
     this._cardsBubble = el;
     this._bumpDismiss(el, CARDS_LINGER_MS);
@@ -912,8 +924,8 @@ export class ChatView {
     this._appendHistTool(name, argsJson, output, cards);
     if (image) this._appendHistImage(image); // show the captured frame below the call
     const html = renderToolCards(name, cards);
-    const titles = { find_restaurants: "Restaurants", restaurant_inspections: "Health inspections", restaurant_details: "Details", open_page: "Link" };
-    if (html) this._spawnCardsBubble(titles[name] ?? name, html);
+    const titles = { find_restaurants: "Restaurants", restaurant_inspections: "Health inspections", restaurant_details: "Details", open_page: "Link", show_on_screen: "On screen" };
+    if (html) this._spawnCardsBubble(titles[name] ?? name, html, name === "show_on_screen");
     this._markUnread();
   }
 }

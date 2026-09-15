@@ -17,10 +17,10 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v48";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v49";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v48";
-import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v48";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v49";
+import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v49";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -63,7 +63,10 @@ const PERSONA_HANDOFF =
   + " you to call or phone someone, and say the name and number as you do. To open a place's"
   + " website, its Google reviews or directions in a new tab, call open_page, only when asked."
   + " When the user asks you to go on standby, stop listening, only answer to your name, mute, or"
-  + " listen normally again, call set_listening with that mode and confirm in a few words."
+  + " listen normally again, call set_listening with that mode and confirm in a few words. When"
+  + " something is better seen than heard, a formula, a table, code, a list of steps, a number or"
+  + " address to copy, call show_on_screen with Markdown (math between $ signs) and then say a"
+  + " short plain version aloud; never speak markup."
   + " When the user asks for a poem, song, story, list or explanation, that request overrides"
   + " the short-reply rule: give the whole thing in one reply, every line of it, without a"
   + " preamble and without waiting to be asked for more. Never promise something for later."
@@ -267,6 +270,24 @@ const TOOL_DEFS = {
         name: { type: "string", description: "Who is being called." },
       },
       required: ["number"],
+    },
+  },
+  show_on_screen: {
+    type: "function",
+    name: "show_on_screen",
+    description:
+      "Show something on the user's screen that is better seen than heard: a formula, a table, " +
+      "code, a list of steps, an address or number to copy. Pass Markdown; math goes between $ " +
+      "signs ($x^2$ inline, $$...$$ on its own line) and is rendered properly. After calling it, " +
+      "say a short plain-language version aloud in words only: no symbols, no $ signs, no markup " +
+      "of any kind in what you say. Do not use it for ordinary answers.",
+    parameters: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "A short heading for the card." },
+        markdown: { type: "string", description: "The content, in Markdown with $-delimited math." },
+      },
+      required: ["markdown"],
     },
   },
   set_listening: {
@@ -537,6 +558,8 @@ const toolRestHint = $("#tool-rest-hint");
 const toolWebRow = $("#tool-web-row");
 /** @type {HTMLElement} */
 const toolWebHint = $("#tool-web-hint");
+const toolWebDesc = $("#tool-web-desc");
+const toolsKeyField = /** @type {HTMLElement} */ ($("#tools-key-field"));
 /** @type {HTMLElement} */
 const toolCamHint = $("#tool-cam-hint");
 /** @type {HTMLInputElement} */
@@ -904,7 +927,7 @@ function activeToolDefs() {
   const defs = [];
   defs.push(TOOL_DEFS.switch_persona);
   // Deterministic, keyless, always on: the model must not count days or do sums itself.
-  defs.push(LOCAL_TOOL_DEFS.date_math, LOCAL_TOOL_DEFS.calculate, TOOL_DEFS.set_listening);
+  defs.push(LOCAL_TOOL_DEFS.date_math, LOCAL_TOOL_DEFS.calculate, TOOL_DEFS.set_listening, TOOL_DEFS.show_on_screen);
   if (toolsEnabled.web_search && searchAvailable()) {
     defs.push(TOOL_DEFS.web_search);
     if (serverFetch) defs.push(TOOL_DEFS.web_fetch);
@@ -1256,18 +1279,21 @@ function syncToolsUi() {
     : "Not configured on this server (needs a Google Places key).";
 
   if (serverSearchKey) {
-    // Key lives server-side: show it as configured, never expose it.
-    searchKeyInput.value = "";
-    searchKeyInput.placeholder = "••••••••  · provided by the server";
-    searchKeyInput.disabled = true;
-    toolWebHint.textContent = "Ready. The search key is held server-side and never sent to your browser.";
+    // The server holds the key (Ollama's search, or a Serper key): nothing to enter here.
+    toolsKeyField.hidden = true;
+    toolWebDesc.textContent = serverFetch
+      ? "Search the web and read whole pages, via Ollama's search service."
+      : "Search the web via Google (Serper).";
+    toolWebHint.textContent = "Runs server-side; no key needed in this browser.";
   } else {
+    toolsKeyField.hidden = false;
     searchKeyInput.disabled = false;
     searchKeyInput.value = userSearchKey;
     searchKeyInput.placeholder = "Paste a Serper key to enable web search";
+    toolWebDesc.textContent = "Search the web via Google (Serper).";
     toolWebHint.textContent = userSearchKey
-      ? "Using your key — stored in this browser only."
-      : "No server key configured. Add your own Serper key to enable web search.";
+      ? "Using your key, stored in this browser only."
+      : "This server has no search key. Add your own Serper key below to enable web search.";
   }
 }
 
@@ -1512,6 +1538,12 @@ async function runTool(name, argsJson, callId) {
       result = { output: det.text, cards: det.found ? [det] : [] };
     } else if (name === "place_call") {
       result.output = placeCall(args);
+    } else if (name === "show_on_screen") {
+      const markdown = typeof args.markdown === "string" ? args.markdown.trim() : "";
+      const title = typeof args.title === "string" ? args.title.trim() : "";
+      result = markdown
+        ? { output: `Shown on screen${title ? `: ${title}` : ""}. Now say a short plain-language version aloud, in words only: no symbols, no $ signs, no markup in what you say.`, cards: [{ title, markdown }] }
+        : { output: "Nothing to show: markdown was empty." };
     } else if (name === "set_listening") {
       result.output = applyListeningMode(typeof args.mode === "string" ? args.mode : "");
     } else if (name === "open_page") {

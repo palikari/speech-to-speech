@@ -148,7 +148,7 @@ _Update at the end of a session that changed something._
   model / Warming up the voice; 25 s fail-safe), and assistant bubbles now
   stay while speaker output is audible (client emits `output-level`; chat
   view bumps the bubble's expiry, fades 3 s after the last word). Assets are
-  cache-busted with `?v=audio-24k-v48` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
+  cache-busted with `?v=audio-24k-v49` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
   editing demo JS/CSS or browsers keep the old files.
 - 2026-09-14 (tools): the LLM handler now parses the model's native
   `<tool_call><function=…><parameter=…>` XML blocks as well as the prompted
@@ -573,6 +573,19 @@ _Update at the end of a session that changed something._
   out of the page); 10 Dograh + Telnyx; 11 Sam places calls (disclosure
   line); 12 Teams bot via Azure Communication Services; 13 on-device wake
   word. Deferred: local prompt cache; opening hours at a later time.
+- 2026-09-15 (item 3: tools tidy-up + show_on_screen): the Tools panel is
+  grouped (Information / Senses / Places / Always on), the Serper key field
+  shows only when the server has no search key, and the web-search text
+  says which service runs it. `show_on_screen` tool {title, markdown}:
+  always on; the page renders the Markdown with `demo/ui/markdown.js` (a
+  small escaping renderer: headings, lists, tables, code, http links,
+  blockquotes; `$...$`/`$$...$$` math through KaTeX 0.18.7, served from
+  node_modules at /vendor/katex, with a code fallback when it is absent)
+  as an "On screen" card in the history and a wide live bubble; the tool
+  result tells the model to speak a plain version in words only (its first
+  try spoke an inline $...$ formula). Live: quadratic formula as display
+  math plus a spoken description, a planets table, and small talk with no
+  card. Tests: `demo/tests/markdown.test.mjs` (pytest-wrapped).
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache
