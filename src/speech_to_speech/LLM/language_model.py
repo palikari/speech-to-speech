@@ -305,6 +305,7 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
         build_system_prompt = build_voice_system_prompt if wants_audio else build_text_system_prompt
 
         if function_tools and tool_choice != "none":
+            logger.info("Tools offered to the model: %s", ", ".join(t.name for t in function_tools))
             tool_section = build_tool_system_prompt(function_tools, text_only=not wants_audio)
             full_instructions = build_system_prompt(
                 instructions or "",

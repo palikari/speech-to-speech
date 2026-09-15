@@ -117,7 +117,7 @@ _Update at the end of a session that changed something._
   model / Warming up the voice; 25 s fail-safe), and assistant bubbles now
   stay while speaker output is audible (client emits `output-level`; chat
   view bumps the bubble's expiry, fades 3 s after the last word). Assets are
-  cache-busted with `?v=audio-24k-v19` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
+  cache-busted with `?v=audio-24k-v20` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
   editing demo JS/CSS or browsers keep the old files.
 - 2026-09-14 (tools): the LLM handler now parses the model's native
   `<tool_call><function=…><parameter=…>` XML blocks as well as the prompted
