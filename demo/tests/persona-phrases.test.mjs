@@ -39,8 +39,8 @@ const requested = (t) => {
   return null;
 };
 
-test("alias table covers all five personas", () => {
-  assert.deepEqual(Object.keys(aliases).sort(), ["assistant", "captain", "robot", "villain", "witch"]);
+test("alias table covers all six personas", () => {
+  assert.deepEqual(Object.keys(aliases).sort(), ["assistant", "captain", "robot", "samantha", "villain", "witch"]);
 });
 
 test("requests by name or role switch", () => {
@@ -49,6 +49,8 @@ test("requests by name or role switch", () => {
     ["Switch to the professor.", "villain"],
     ["Can I talk to Barnaby?", "captain"],
     ["Get me the robot.", "robot"],
+    ["Can I speak to Sam?", "samantha"],
+    ["Let me talk to Samantha, please.", "samantha"],
     ["Let me talk to Unit Seven.", "robot"],
     ["Put me through to that utter madman.", "villain"],
     ["I'd like a word with the sorceress.", "witch"],
@@ -67,6 +69,7 @@ test("ordinary sentences do not switch", () => {
   const cases = [
     "The professor said the bridge is out.",
     "I bought a new robot vacuum.",
+    "It's the same thing every time.",
     "Tell me about bobsled racing.",
     "Who am I speaking with?",
     "Can I speak with the old salt?", // a nickname: left to the model

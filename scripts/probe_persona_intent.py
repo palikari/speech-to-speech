@@ -28,6 +28,8 @@ CASES = [  # (start persona, what the user says, expected persona)
     ("captain", "Get me the tin can.", "robot"),
     ("villain", "Let me talk to the regular assistant, please.", "assistant"),
     ("assistant", "Is the lady with the cauldron around?", "witch"),
+    ("captain", "Put me through to Sam, would you?", "samantha"),
+    ("samantha", "Hey Sam, what's the weather like today?", None),  # her own name: no switch
     ("witch", "What's the weather like today?", None),  # no switch expected
 ]
 
@@ -65,7 +67,7 @@ TOOL = {
     "description": tool_description(),
     "parameters": {
         "type": "object",
-        "properties": {"persona": {"type": "string", "enum": ["assistant", "witch", "captain", "villain", "robot"]}},
+        "properties": {"persona": {"type": "string", "enum": ["assistant", "samantha", "witch", "captain", "villain", "robot"]}},
         "required": ["persona"],
     },
 }

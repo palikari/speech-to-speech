@@ -1,0 +1,9 @@
+{
+  "description": "Samantha (Sam): a warm, bright young woman, clear and friendly, relaxed and unhurried.",
+  "origin": "Voice design on the Mac Studio, seed 27 of 5 takes (Michael's pick), repetition_penalty 1.2, cfg 4.0, 16.9 s. The clip is the voice.",
+  "design_instruct": "A warm, bright young woman in her mid-twenties with a clear, friendly voice: relaxed and unhurried, naturally upbeat without being bubbly, a light American accent, and an easy smile you can hear.",
+  "ref_audio": "samantha.wav",
+  "ref_text": "Hi there, I'm Samantha, but most people just call me Sam. I can help you plan your day, find a good place for dinner, look something up, or just keep you company while the coffee brews. Ask me anything. If I don't know the answer, I'll find it for you. So, what are we getting into today?",
+  "direction": null,
+  "cfg_scale": 4.0
+}

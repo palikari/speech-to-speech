@@ -148,7 +148,7 @@ _Update at the end of a session that changed something._
   model / Warming up the voice; 25 s fail-safe), and assistant bubbles now
   stay while speaker output is audible (client emits `output-level`; chat
   view bumps the bubble's expiry, fades 3 s after the last word). Assets are
-  cache-busted with `?v=audio-24k-v33` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
+  cache-busted with `?v=audio-24k-v34` (one shared string: index.html, main.js imports, AUDIO_WORKLET_VERSION in the client; two tests pin it) in index.html/main.js; bump it when
   editing demo JS/CSS or browsers keep the old files.
 - 2026-09-14 (tools): the LLM handler now parses the model's native
   `<tool_call><function=…><parameter=…>` XML blocks as well as the prompted
@@ -170,7 +170,10 @@ _Update at the end of a session that changed something._
   clip designed on the MacBook, seed 9; the clip is the voice, never re-roll)
   `robot` (Unit Seven, designed here, seed 2 of 5 takes; Michael picked it) and
   `captain` (gruff old sea captain, designed here, seed 12) and `witch`
-  (gleeful old witch, designed here, seed 23 of 5 takes; Michael's pick).
+  (gleeful old witch, designed here, seed 23 of 5 takes; Michael's pick) and
+  `samantha` (Sam, a warm capable everyday assistant, designed here 2026-09-15,
+  seed 27 of 5 takes; Michael's pick; takes made with the handler's own design
+  settings and STT-checked for full script coverage).
   The demo Settings has a Persona picker that sets the voice name and the
   character prompt (`PERSONAS` in demo/main.js). Planned: witch, once its clip is picked (recipe: design 5 seeds of a 60-word script in the lab,
   STT-check completeness, send takes, install the pick as voices/<name>.{wav,json}).
@@ -414,6 +417,13 @@ _Update at the end of a session that changed something._
   to invent filters and call twice; the tool description now says one call
   and no filters unless asked (1 call on the plain question after that).
   Tests: `tests/test_demo_restaurants.py` (fakes for Places and the portal).
+- 2026-09-15 (Samantha): sixth persona, `samantha` (name Samantha, aliases
+  samantha/sam, wake words the same; "sam" is short so the wake gate matches
+  it exactly). Added to PERSONAS, the switch_persona enum and description,
+  the hand-off roster sentence, the Settings dropdown, the phrase test and
+  the intent probe. Take recipe used: scratch script loading the Breeze
+  model with the handler's own kwargs, 5 seeds, Parakeet (mlx-audio
+  `generate`) coverage check, takes in the breeze-tts lab's outputs folder.
 - Open threads: the LLM stage is the latency floor. `LLM/language_model.py`
   has no mlx-lm prompt cache across turns and logs no TTFT, so each turn
   re-processes the system prompt + history. Next: add a KV prompt cache

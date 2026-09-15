@@ -17,10 +17,10 @@
  * @typedef {S2sRealtimeClient} RealtimeClient
  */
 
-import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v33";
+import { S2sRealtimeClient } from "./s2s-realtime-client.js?v=audio-24k-v34";
 import { $, truncateError, DEBUG } from "./ui/dom.js";
-import { ChatView } from "./ui/chat.js?v=audio-24k-v33";
-import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v33";
+import { ChatView } from "./ui/chat.js?v=audio-24k-v34";
+import { LOCAL_TOOL_DEFS, runLocalTool } from "./tools/local-tools.js?v=audio-24k-v34";
 import { Account } from "./ui/account.js";
 
 // Blank means "use the server's configured voice"; the field also accepts a
@@ -39,8 +39,8 @@ const VOCAL_CUES =
 /** Every persona knows the others exist and may hand the conversation over. */
 const PERSONA_HANDOFF =
   " You are one of several personas the user can talk to; the others are Bob (a plain"
-  + " assistant), Esmerelda (a witch), Captain Barnaby (a sea captain), Professor Karloff (a mad"
-  + " scientist) and Unit Seven (a robot). Whenever the user asks to talk to, switch to, or get"
+  + " assistant), Samantha (Sam for short, a capable everyday assistant), Esmerelda (a witch),"
+  + " Captain Barnaby (a sea captain), Professor Karloff (a mad scientist) and Unit Seven (a robot). Whenever the user asks to talk to, switch to, or get"
   + " one of the others, by name or description, you must call the switch_persona tool with that"
   + " persona; that call is the only thing that performs the switch, a spoken farewell alone does"
   + " nothing. Do it in the same reply: a one-line goodbye in your own voice, then the"
@@ -71,6 +71,18 @@ const PERSONAS = /** @type {Record<string, { name: string; label: string; voice:
     voice: "assistant",
     aliases: ["bob", "assistant"],
     instructions: "You are Bob, a friendly voice assistant." + PERSONA_HANDOFF,
+  },
+  samantha: {
+    name: "Samantha",
+    label: "Samantha (Sam)",
+    voice: "samantha",
+    aliases: ["samantha", "sam"],
+    instructions:
+      "You are Samantha, Sam for short, a capable everyday assistant: warm, upbeat and quick on your "
+      + "feet, with a little friendly small talk but never padding. You get things done: use the tools "
+      + "for anything current, for places to eat, for dates and sums, and give clear, practical answers "
+      + "with a light touch. You're having a casual spoken conversation, so reply in one to three short "
+      + "sentences, plain wording, no lists or headings." + VOCAL_CUES + PERSONA_HANDOFF,
   },
   villain: {
     name: "Karloff",
@@ -169,12 +181,12 @@ const TOOL_DEFS = {
     description:
       "Switch the conversation to another persona (its voice and character). Required whenever the"
       + " user asks to talk to, switch to, or get another persona, by name or description:"
-      + " assistant = Bob, witch = Esmerelda, captain = Captain Barnaby, villain = Professor"
-      + " Karloff the mad scientist, robot = Unit Seven. Nothing else performs the switch.",
+      + " assistant = Bob, samantha = Samantha (Sam), witch = Esmerelda, captain = Captain Barnaby,"
+      + " villain = Professor Karloff the mad scientist, robot = Unit Seven. Nothing else performs the switch.",
     parameters: {
       type: "object",
       properties: {
-        persona: { type: "string", enum: ["assistant", "witch", "captain", "villain", "robot"] },
+        persona: { type: "string", enum: ["assistant", "samantha", "witch", "captain", "villain", "robot"] },
       },
       required: ["persona"],
     },
