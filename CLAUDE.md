@@ -577,6 +577,16 @@ _Update at the end of a session that changed something._
   new private repo, push this history there, switch `origin` on both Macs,
   keep the public fork only to track upstream. Note the upstream licence
   when the product diverges (attribution stays).
+  14 (added 2026-09-16) tone of voice: a speech-emotion classifier in the
+  pipeline server, run on the same VAD clip as Parakeet, whose result is
+  appended to the user turn as a hedged tag ("[tone: may sound frustrated,
+  low confidence]") plus a persona-prompt line on how much weight to give
+  it; never a tool, never a fact. Candidates, all open source and local:
+  emotion2vec+ (seed/base/large, 9 classes, ACL 2024, the most used SER
+  base; HF `emotion2vec`) and FunAudioLLM SenseVoice-Small (ASR + emotion +
+  audio events in one model, Apache-2.0). Published accuracy on acted
+  datasets is ~70-85%; expect less on a real room, hence the hedge. Add a
+  privacy-note line when it ships.
   Deferred: local prompt cache; opening hours at a later time;
   context cost control (added 2026-09-15: each turn resends the whole
   history, ~7k input tokens by the end of a long session; the upstream
