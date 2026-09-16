@@ -587,6 +587,23 @@ _Update at the end of a session that changed something._
   audio events in one model, Apache-2.0). Published accuracy on acted
   datasets is ~70-85%; expect less on a real room, hence the hedge. Add a
   privacy-note line when it ships.
+  15 (added 2026-09-16) delivery directions: Breeze takes a free-text
+  delivery instruction per utterance (`instruct` + cfg 4, the same slot as
+  voice design; `direction` in a voice file is the fixed per-voice form).
+  Plan: a short per-persona menu GLM picks from as a hidden tag the
+  pipeline strips before speech, plus an optional pitch-preserving tempo
+  factor. Findings from the Samantha samples: mood words carry their own
+  tempo ("sincere" drags, "urgent" rushes), so every preset needs an
+  explicit pace word; takes vary ~10-15% in length, so tune each preset
+  over several takes; whisper works ("a true breathy whisper, almost no
+  voice, close to the microphone") and sits ~11 dB quieter, which may not
+  trigger the ambience duck. Michael's pick for the apology preset (takes
+  14a/14c, "particularly empathetic"): "Sincere and warm, genuinely
+  apologetic and taking responsibility, gently brisk: a lightly efficient
+  conversational pace, phrases connected, pauses short but not clipped. A
+  settled full stop after the first sentence, then a level, steady start
+  to the second, no rising lilt." Sample files in ~/Downloads on the Studio
+  (Sam-apology-14a.wav, Sam-apology-14c.wav).
   Deferred: local prompt cache; opening hours at a later time;
   context cost control (added 2026-09-15: each turn resends the whole
   history, ~7k input tokens by the end of a long session; the upstream
