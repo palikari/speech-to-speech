@@ -608,9 +608,12 @@ _Update at the end of a session that changed something._
   brisk pace in one flowing breath, conspiratorial." (~-43 dB); flirtatious
   = "A playful conspiratorial whisper with a smile in it, teasing and
   amused, quiet and close, quick and light, sharing a delicious secret."
-  (~-33 dB; the smile brings voice back). A "stage whisper, tense and
-  urgent, quick and clipped" read as frightened but too fast; the
-  measured-pace rewording is being tuned. Sample files in `demo/sfx/samples/`
+  (~-33 dB; the smile brings voice back); frightened = "A frightened stage
+  whisper: hushed but still voiced, tense and scared, leaning in as if
+  someone might overhear, but at a careful, measured pace, each word
+  placed deliberately, not rushed." (take 16c, 4.8 s; Michael: slowing it
+  cost a little of the fright, so fear and pace trade off; the quick
+  version read as scared but too fast). Sample files in `demo/sfx/samples/`
   (gitignored; the app can only offer downloads from inside the repo folder).
   Deferred: local prompt cache; opening hours at a later time;
   context cost control (added 2026-09-15: each turn resends the whole
