@@ -610,8 +610,8 @@ _Update at the end of a session that changed something._
   amused, quiet and close, quick and light, sharing a delicious secret."
   (~-33 dB; the smile brings voice back). A "stage whisper, tense and
   urgent, quick and clipped" read as frightened but too fast; the
-  measured-pace rewording is being tuned. Sample files in ~/Downloads on
-  the Studio (Sam-apology-14a/14c, Sam-whisper-15a, Sam-whisper-playful-15c).
+  measured-pace rewording is being tuned. Sample files in `demo/sfx/samples/`
+  (gitignored; the app can only offer downloads from inside the repo folder).
   Deferred: local prompt cache; opening hours at a later time;
   context cost control (added 2026-09-15: each turn resends the whole
   history, ~7k input tokens by the end of a long session; the upstream
